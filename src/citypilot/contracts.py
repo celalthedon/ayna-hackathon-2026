@@ -21,6 +21,10 @@ class ContractError(ValueError):
     """Invalid or incompatible versioned payload."""
 
 
+class StressFactorsNotSupported(NotImplementedError):
+    """A well-formed routing capability is unavailable; not invalid input."""
+
+
 def _require(condition, message):
     if not condition:
         raise ContractError(message)
@@ -317,7 +321,9 @@ class ModelCatalog(Versioned):
         _require(type(request) is RoutingRequest,'Expected v1 RoutingRequest')
         _require((self.model_version,self.od_set_id)==(request.model_version,request.od_set_id),'Catalog/request identity mismatch')
         _require(request.closure_id is None or request.closure_id in self.closure_ids,'Unknown declared closure')
-        _require(set(request.headway_factor_by_group or {})<=set(self.service_groups),'Headway factors target existing groups only')
+        if request.headway_factor_by_group is not None:
+            _require(set(request.headway_factor_by_group)==set(self.service_groups),
+                     'headway_factor_by_group must exactly cover existing service_groups; no missing, unknown or prebuilt keys')
         for patch in request.patches:
             mapping={'set_service_headway':self.service_groups,'activate_service':self.prebuilt_services,
                      'activate_link':self.links,'enable_parking':self.parking}[patch.kind]

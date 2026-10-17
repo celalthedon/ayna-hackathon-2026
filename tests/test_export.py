@@ -47,6 +47,15 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(target.stat().st_mtime_ns,mtime)
         self.assertEqual(self.other.read_bytes(),b"# Ali's existing work\n")
 
+    def test_crlf_checkout_generated_header_can_be_regenerated(self):
+        target=exporter.export_notebook(self.notebook,"celal",repo_root=self.root)
+        target.write_bytes(target.read_bytes().replace(b"\n",b"\r\n"))
+        self.write([cell("CHANGED = 2")])
+        exporter.export_notebook(self.notebook,"celal",repo_root=self.root)
+        self.assertNotIn(b"\r",target.read_bytes())
+        exporter.export_notebook(self.notebook,"celal",repo_root=self.root,check=True)
+        self.assertEqual(self.other.read_bytes(),b"# Ali's existing work\n")
+
     def test_owner_mismatch_never_writes_either_module(self):
         before=self.other.read_bytes()
         with self.assertRaises(exporter.ExportError):

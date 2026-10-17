@@ -142,7 +142,8 @@ def export_notebook(notebook: Path, owner: str, *, repo_root: Path = ROOT, check
         actual = destination.read_bytes()
         if actual == expected:
             return destination
-        if not actual.startswith(HEADER.encode("utf-8")):
+        # Git on Windows may check out the generated header with CRLF.
+        if not actual.splitlines() or actual.splitlines()[0] != HEADER.rstrip("\n").encode("utf-8"):
             raise ExportError("Refusing to overwrite a non-generated existing module")
     if check:
         raise ExportError("Generated module missing or stale")
