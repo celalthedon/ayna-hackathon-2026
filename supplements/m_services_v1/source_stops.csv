@@ -1,0 +1,25 @@
+line,direction,seq,stop_key,stop_name,lat,lon,point_id,google_stop_id,order_status,coord_status,checked_by,notes
+M1,A,1,M_ELMLER,Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi),40.375086,49.81571,P01,001001166,published,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M1,A,2,M_28MAY_NMM,28 May NMM,40.379422,49.848521,P04,,published,approximate,Ali,
+M1,B,1,M_28MAY_NMM,28 May NMM,40.379422,49.848521,P04,,assumption,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M1,B,2,M_ELMLER,Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi),40.375086,49.81571,P01,001001166,assumption,approximate,Ali,
+M2,A,1,M_INSAATCILAR,İnşaatçılar m/st (Nəsirəddin Tusi klinikası tərəfi),40.391589,49.802721,P02,001001335,published,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M2,A,2,M_NIZAMI,Nizami m/st qarşısı,40.379592,49.830327,P03,001000274,published,approximate,Ali,
+M2,A,3,M_28MAY_NMM,28 May NMM,40.379422,49.848521,P04,,published,approximate,Ali,
+M2,B,1,M_28MAY_NMM,28 May NMM,40.379422,49.848521,P04,,assumption,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M2,B,2,M_NIZAMI,Nizami m/st qarşısı,40.379592,49.830327,P03,001000274,assumption,approximate,Ali,
+M2,B,3,M_INSAATCILAR,İnşaatçılar m/st (Nəsirəddin Tusi klinikası tərəfi),40.391589,49.802721,P02,001001335,assumption,approximate,Ali,
+M3,A,1,M_ZERDABI_TBILISI,Tbilisi pr. / H. Zərdabi küç. kəsişməsi (20 Yanvar metro stansiyası dayanacağı),40.402876,49.809002,P05b,,published,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M3,A,2,M_NIZAMI,Nizami m/st qarşısı,40.379592,49.830327,P03,001000274,published,approximate,Ali,
+M3,A,3,M_28MAY_NMM,28 May NMM,40.379422,49.848521,P04,,published,approximate,Ali,
+M3,B,1,M_28MAY_NMM,28 May NMM,40.379422,49.848521,P04,,assumption,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M3,B,2,M_NIZAMI,Nizami m/st qarşısı,40.379592,49.830327,P03,001000274,assumption,approximate,Ali,
+M3,B,3,M_ZERDABI_TBILISI,Tbilisi pr. / H. Zərdabi küç. kəsişməsi (20 Yanvar metro stansiyası dayanacağı),40.402876,49.809002,P05b,,assumption,approximate,Ali,
+M5,A,1,M_20YANVAR_VELOTREK,20 Yanvar m/st (Velotrek girişi tərəfi),40.404161,49.808954,P06,001001106,published,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M5,A,2,M_GENCLIK_NMM,Gənclik NMM,40.399545,49.851577,P07,,published,approximate,Ali,
+M5,B,1,M_GENCLIK_NMM,Gənclik NMM,40.399545,49.851577,P07,,assumption,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M5,B,2,M_20YANVAR_VELOTREK,20 Yanvar m/st (Velotrek girişi tərəfi),40.404161,49.808954,P06,001001106,assumption,approximate,Ali,
+M6,A,1,M_ELMLER,Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi),40.375086,49.81571,P01,001001166,published,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M6,A,2,M_GENCLIK_NMM,Gənclik NMM,40.399545,49.851577,P07,,published,approximate,Ali,
+M6,B,1,M_GENCLIK_NMM,Gənclik NMM,40.399545,49.851577,P07,,assumption,approximate,Ali,A = AYNA official order; B = reverse (not published)
+M6,B,2,M_ELMLER,Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi),40.375086,49.81571,P01,001001166,assumption,approximate,Ali,
