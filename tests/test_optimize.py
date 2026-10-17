@@ -8,19 +8,17 @@ import pytest
 from citypilot.decision_engine import (
     Candidate,
     DecisionProblem,
-    EvaluationResult,
     Limits,
     Link,
     ModelCatalog,
-    ODResult,
+    ObjectiveModelMismatch,
     ResourceResult,
-    RoutingRequest,
     Scenario,
-    ServiceGroup,
     count_lost,
     enumerate_packages,
     gate_decision,
     gate_objective,
+    load_objective,
     load_fixture,
     load_limits,
     make_catalog_resources,
@@ -28,6 +26,8 @@ from citypilot.decision_engine import (
     optimize,
     rank_key,
 )
+
+from decision_testkit import FIXTURE_HASHES, fixture_context, make_evaluation, make_request, service, write_objective
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = load_fixture(ROOT / "tests" / "fixtures" / "decision" / "fixture_4action.json")
@@ -47,12 +47,10 @@ def table_resources(table):
 
 
 def objective_file(tmp_path, objective):
-    path = tmp_path / "objective_decision.json"
-    path.write_text(json.dumps({"objective": objective, "note": "set explicitly in test; gate not run"}))
-    return path
+    return write_objective(tmp_path, objective)
 
 
-def problem_from(fixture, objective_path, *, max_exact=1024, n_a=None, b_h=None, prerequisites=None):
+def problem_from(fixture, objective_dir, *, max_exact=1024, n_a=None, b_h=None, prerequisites=None):
     lim = fixture["limits"]
     actions = fixture["actions"]
     return DecisionProblem(
@@ -69,7 +67,9 @@ def problem_from(fixture, objective_path, *, max_exact=1024, n_a=None, b_h=None,
         thresholds_min=(40, 45, 50),
         primary_t_min=lim["T_min"],
         cap_min=lim["C_min"],
-        objective_path=objective_path,
+        objective_dir=objective_dir,
+        model_hashes=FIXTURE_HASHES,
+        context=fixture_context(),
         resources=table_resources(actions),
     )
 
@@ -173,8 +173,7 @@ def test_sum_ranking():
     feasible = ["", "A", "B", "C", "D", "AC", "AD", "BD", "CD", "ACD"]
 
     def key(p):
-        req = RoutingRequest(tuple(p), problem.thresholds_min, problem.primary_t_min, problem.cap_min)
-        return rank_key(evaluate(req), res(tuple(p)), objective="sum")
+        return rank_key(evaluate(make_request(p)), res(tuple(p)), objective="sum", candidate_ids=p)
 
     assert sorted(feasible, key=key) == ["ACD", "AC", "CD", "C", "B", "BD", "A", "AD", "", "D"]
 
@@ -197,21 +196,19 @@ def test_gate_zero_total():
         gate_objective({40: 0, 45: 0, 50: 0}, 0)
 
 
-def evaluation(minutes, tag):
-    od_results = tuple(ODResult(f"OD{i + 1}", m, "reachable") for i, m in enumerate(minutes))
-    return EvaluationResult(tag, (), od_results, {}, 45, sum(minutes))
+def evaluation(minutes, tag, state, profile="P"):
+    return make_evaluation(minutes, state=state, profile=profile, config_hash=tag)
 
 
 def test_gate_lost_counting():
-    normal = evaluation([30, 44, 46, 50], "normal-hash")
-    disrupted = evaluation([50, 46, 60, 40], "disrupted-hash")
+    normal = evaluation([30, 44, 46, 50], "normal-hash", "normal")
+    disrupted = evaluation([50, 46, 60, 40], "disrupted-hash", "disrupted")
     assert count_lost(normal, disrupted, (40, 45, 50)) == {40: 1, 45: 2, 50: 1}
 
 
 def test_gate_decision_file(tmp_path):
-    path = tmp_path / "objective_decision.json"
-    record = gate_decision(evaluation([30, 44, 46, 50], "n"), evaluation([50, 46, 60, 40], "d"), path)
-    saved = json.loads(path.read_text())
+    record = gate_decision(evaluation([30, 44, 46, 50], "n", "normal"), evaluation([50, 46, 60, 40], "d", "disrupted"), tmp_path)
+    saved = json.loads((tmp_path / "objective_decision_P.json").read_text())
     assert saved == record
     assert saved["objective"] == "sum"
     assert saved["total_OD"] == 4
@@ -220,11 +217,11 @@ def test_gate_decision_file(tmp_path):
     assert saved["input_hashes"] == {"normal": "n", "disrupted": "d"}
     assert {"thresholds", "timestamp"} <= saved.keys()
     with pytest.raises(FileExistsError):
-        gate_decision(evaluation([30], "n"), evaluation([50], "d"), path)
+        gate_decision(evaluation([30], "n", "normal"), evaluation([50], "d", "disrupted"), tmp_path)
 
 
 def test_optimize_without_objective_decision(tmp_path):
-    problem = problem_from(FIXTURE, tmp_path / "missing.json")
+    problem = problem_from(FIXTURE, tmp_path / "no_objective")
     with pytest.raises(FileNotFoundError):
         optimize(problem, make_fixture_evaluator(FIXTURE))
 
@@ -309,8 +306,7 @@ def test_greedy_skips_l_when_l_plus_p_does_not_fit(tmp_path):
 # --- production resources wrapper ---
 
 def test_catalog_resources_wrapper(tmp_path):
-    def svc(sid, headway, km, speed, stops, dwell, layover):
-        return ServiceGroup(sid, (), headway, km, speed, stops, dwell, layover, "full", "fixture", "fixture")
+    svc = service
 
     catalog = ModelCatalog(
         service_groups={"SG_R2": svc("SG_R2", 10, 12, 15, 30, 20, 5)},
@@ -330,3 +326,41 @@ def test_limits_yaml():
     limits = load_limits(ROOT / "config" / "limits.yaml")
     assert limits.max_exact_packages == 1024
     assert (limits.B_h_bus_hours, limits.K_new_infra_km, limits.N_a_actions) == (30.0, 2.0, 3)
+
+
+# --- gate per profile ---
+
+def gate_inputs(lost_at_45_only, total, profile):
+    """normal: every OD at 40 min; disrupted: `lost_at_45_only` ODs at 47 min (lost at 40 and 45, not at 50)."""
+    normal = make_evaluation([40] * total, state="normal", profile=profile, config_hash=f"normal-{profile}")
+    disrupted = make_evaluation([47] * lost_at_45_only + [40] * (total - lost_at_45_only), state="disrupted",
+                                profile=profile, config_hash=f"disrupted-{profile}")
+    return normal, disrupted
+
+
+def test_gate_per_profile_writes_separate_files(tmp_path):
+    p = gate_decision(*gate_inputs(1148, 2718, "P"), tmp_path)
+    b = gate_decision(*gate_inputs(0, 2718, "B"), tmp_path)
+    assert p["objective"] == "count" and p["lost_T"]["45"] == 1148 and p["total_OD"] == 2718 and p["profile"] == "P"
+    assert b["objective"] == "sum" and b["lost_T"] == {"40": 0, "45": 0, "50": 0} and b["profile"] == "B"
+    assert json.loads((tmp_path / "objective_decision_P.json").read_text())["objective"] == "count"
+    assert json.loads((tmp_path / "objective_decision_B.json").read_text())["objective"] == "sum"
+    assert load_objective(tmp_path, "P", {"normal": "normal-P", "disrupted": "disrupted-P"}) == "count"
+    assert load_objective(tmp_path, "B", {"normal": "normal-B", "disrupted": "disrupted-B"}) == "sum"
+
+
+def test_objective_for_another_model_is_rejected(tmp_path):
+    gate_decision(*gate_inputs(1148, 2718, "P"), tmp_path)
+    with pytest.raises(ObjectiveModelMismatch, match="objective decided for another model"):
+        load_objective(tmp_path, "P", {"normal": "normal-P", "disrupted": "a-newer-model"})
+    problem = problem_from(FIXTURE, tmp_path)  # fixture model hashes differ from the committed ones
+    with pytest.raises(ObjectiveModelMismatch, match="objective decided for another model"):
+        optimize(problem, make_fixture_evaluator(FIXTURE))
+
+
+def test_gate_needs_normal_and_disrupted_of_one_profile(tmp_path):
+    normal, disrupted = gate_inputs(10, 100, "P")
+    with pytest.raises(ValueError):
+        gate_decision(disrupted, normal, tmp_path)
+    with pytest.raises(ValueError):
+        gate_decision(normal, make_evaluation([40] * 100, state="disrupted", profile="B"), tmp_path)

@@ -15,6 +15,8 @@ from citypilot.decision_engine import (
     load_fixture,
 )
 
+from decision_testkit import make_evaluation, service as kit_service  # noqa: E402
+
 FIXTURE = load_fixture(Path(__file__).resolve().parent / "fixtures" / "decision" / "fixture_stress.json")
 BUS_KG_PER_VKM = 0.97992  # P13 default
 CAR_KG_PER_PKM = 0.125211  # P12 default
@@ -22,8 +24,8 @@ SCENARIO = Scenario(1.0, 1.0, 3.0)
 
 
 def service(sid, v):
-    return ServiceGroup(sid, (), v["base_headway_min"], v["full_cycle_km"], v["speed_kmh"], v["stops_per_cycle"],
-                        v["dwell_s"], v["layover_min"], v["coverage"], "fixture", "fixture")
+    return kit_service(sid, v["base_headway_min"], v["full_cycle_km"], v["speed_kmh"], v["stops_per_cycle"],
+                       v["dwell_s"], v["layover_min"], v["coverage"])
 
 
 CAT = FIXTURE["catalog"]
@@ -31,7 +33,7 @@ CATALOG = ModelCatalog(
     service_groups={k: service(k, v) for k, v in CAT["service_groups"].items()},
     prebuilt_services={k: service(k, v) for k, v in CAT["prebuilt_services"].items()},
     links={k: Link(k, v["kind"], v["length_m"], v["requires_construction"], "fixture") for k, v in CAT["links"].items()},
-    parking={k: Parking(k, "fixture") for k in CAT["parking"]},
+    parking={k: Parking(k, "fixture", False) for k in CAT["parking"]},
 )
 CANDIDATES = {
     cid: Candidate(cid, a["kind"], target_id=a.get("target_id"), pct=a.get("pct"), link_ids=tuple(a.get("link_ids", ())))
@@ -105,7 +107,7 @@ def test_invalid_inputs_fail(bad):
 
 
 def test_partial_coverage_service_fails_loudly():
-    partial = ServiceGroup("SG_R2", (), 7.5, None, None, None, None, None, "partial", "fixture", "fixture")
+    partial = ServiceGroup("SG_R2", (), 7.5, None, None, None, None, None, "partial", {"base_headway_min": "fixture"})
     catalog = ModelCatalog({"SG_R2": partial}, CATALOG.prebuilt_services, CATALOG.links, CATALOG.parking)
     with pytest.raises(ValueError, match="SG_R2"):
         co2_for_package([CANDIDATES["A"]], catalog, SCENARIO, bus_kg_per_vkm=BUS_KG_PER_VKM, car_kg_per_pkm=CAR_KG_PER_PKM)
@@ -113,13 +115,11 @@ def test_partial_coverage_service_fails_loudly():
 
 # --- default car trip length: mean car_distance_km of the restored ODs (OD table, not the journey) ---
 
-from citypilot.decision_engine import EvaluationResult, ODResult, mean_car_distance_km  # noqa: E402
+from citypilot.decision_engine import OdCarDistance, load_od_car_distances, mean_car_distance_km  # noqa: E402
 
 
 def evaluation(minutes):
-    ods = tuple(ODResult(f"OD{i + 1}", m if m is not None else 120, "reachable" if m is not None else "no_path")
-                for i, m in enumerate(minutes))
-    return EvaluationResult("t", (), ods, {}, 45, 0)
+    return make_evaluation(minutes)
 
 
 BEFORE = evaluation([60, 40, None, 50])   # OD2 already within 45
@@ -141,3 +141,46 @@ def test_mean_car_distance_missing_is_null(table):
 def test_mean_car_distance_nothing_restored():
     km, source = mean_car_distance_km(BEFORE, BEFORE, {"OD1": 4.0, "OD2": 1.0, "OD3": 8.0, "OD4": 2.0})
     assert km is None and "restores no OD" in source
+
+
+
+# --- OD table reader: data/curated/od_car_distances.csv ---
+
+CSV_HEADER = "od_id,car_distance_km,status,snap_m,origin_snap_m,destination_snap_m\n"
+
+
+def write_csv(tmp_path, body):
+    path = tmp_path / "od_car_distances.csv"
+    path.write_text(CSV_HEADER + body, encoding="utf-8")
+    return path
+
+
+def test_reader_and_status_named_in_message(tmp_path):
+    path = write_csv(tmp_path, "OD1,4.0,modelled,12.5,3.0,9.5\nOD2,,no_path,,1.0,2.0\nOD3,,snap_failed,,250.0,\n")
+    table = load_od_car_distances(path)
+    assert table["OD1"] == OdCarDistance("OD1", 4.0, "modelled", 12.5, 3.0, 9.5)
+    assert table["OD3"].status == "snap_failed" and table["OD3"].destination_snap_m is None
+    km, source = mean_car_distance_km(AFTER, BEFORE, table)  # restores OD1 and OD3
+    assert km is None
+    assert "OD3: snap_failed" in source
+    km, source = mean_car_distance_km(AFTER, BEFORE, table | {"OD3": OdCarDistance("OD3", 8.0, "modelled", 1.0, 1.0, 1.0)})
+    assert km == 6.0
+
+
+@pytest.mark.parametrize("body", [
+    "OD1,4.0,guessed,,,\n",          # unknown status
+    "OD1,,modelled,,,\n",            # modelled without a value
+    "OD1,4.0,no_path,,,\n",          # value with a non-modelled status
+    "OD1,4.0,modelled,,,\nOD1,5.0,modelled,,,\n",  # duplicate od_id
+    "OD1,-1,modelled,,,\n",          # negative distance
+])
+def test_reader_fails_loudly(tmp_path, body):
+    with pytest.raises(ValueError):
+        load_od_car_distances(write_csv(tmp_path, body))
+
+
+def test_reader_needs_the_agreed_columns(tmp_path):
+    path = tmp_path / "od_car_distances.csv"
+    path.write_text("od_id,car_distance_km\nOD1,4.0\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="columns"):
+        load_od_car_distances(path)

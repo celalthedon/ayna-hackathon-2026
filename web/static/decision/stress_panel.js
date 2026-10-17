@@ -56,6 +56,10 @@
       if (ctx.isOutdated(result) || pkgName(result.package_ids) !== pkgName(ctx.selected)) {
         root.appendChild(ctx.statusLine("outdated", "outdated - recompute"));
       }
+      if (result.status !== "ok") {
+        root.appendChild(ctx.statusLine("warn", result.message || "stress not available for this model yet"));
+        return;
+      }
       const byKey = Object.fromEntries(result.points.map((p) => [`${p.speed_level}/${p.headway_level}`, p]));
       root.appendChild(el("table", {},
         el("thead", {}, el("tr", {}, el("th", {}, "speed \\ headway"), LEVELS.map((h) => el("th", {}, `${h} headway`)))),

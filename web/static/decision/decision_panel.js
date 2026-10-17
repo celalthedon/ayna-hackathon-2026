@@ -185,8 +185,9 @@
       }
       root.replaceChildren();
       root.appendChild(el("h3", {}, "Intervention packages"));
-      const objective = s ? (s.objective.value ? `${s.objective.value} (committed)` : "not committed") : "…";
-      root.appendChild(el("div", { class: "muted" }, `Objective in use: ${objective}`));
+      const committed = s && s.objective[form.profile];
+      const objective = committed ? (committed.value ? `${committed.value} (committed)` : committed.status) : "…";
+      root.appendChild(el("div", { class: "muted" }, `Objective in use (profile ${form.profile}): ${objective}`));
       root.appendChild(el("div", { class: "row" },
         number("B_h", 0, 70, 0.5, "bus-hours"), number("K", 0, 3, 0.05, "km"),
         el("label", {}, "N_a", el("select", { onchange: (e) => { form.N_a = Number(e.target.value); } },

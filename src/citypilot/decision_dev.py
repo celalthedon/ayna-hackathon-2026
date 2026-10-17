@@ -20,6 +20,7 @@ from citypilot.decision_engine import (
     ServiceGroup,
     StressGrid,
     load_fixture,
+    make_catalog_patches,
     make_catalog_resources,
     make_fixture_evaluator,
 )
@@ -28,11 +29,14 @@ ROOT = Path(__file__).resolve().parents[2]
 STRESS_FIXTURE = ROOT / "tests" / "fixtures" / "decision" / "fixture_stress.json"
 ASSUMPTIONS = ROOT / "data" / "curated" / "assumptions.csv"
 DEV_DIR = ROOT / "outputs" / "cache" / "decision_dev"
+# synthetic normal / disrupted config hashes of the fixture model
+FIXTURE_MODEL_HASHES = {"normal": "fixture-normal", "disrupted": "fixture-disrupted"}
 
 
 def _service(sid: str, v: dict) -> ServiceGroup:
     return ServiceGroup(sid, (), v["base_headway_min"], v["full_cycle_km"], v["speed_kmh"], v["stops_per_cycle"],
-                        v["dwell_s"], v["layover_min"], v["coverage"], "fixture", "fixture")
+                        v["dwell_s"], v["layover_min"], v["coverage"],
+                        {f: "fixture" for f in ("base_headway_min", "full_cycle_km", "speed_kmh")})
 
 
 def _assumption(param_id: str) -> tuple[float, str]:
@@ -72,7 +76,7 @@ def synthetic_evaluator_for(fx: dict):
     return evaluator_for
 
 
-def fixture_stress_backend(objective_path: Path, cache_dir: Path, reference=None,
+def fixture_stress_backend(objective_dir: Path, cache_dir: Path, reference=None,
                            od_car_distance_km=None) -> DecisionBackend:
     fx = load_fixture(STRESS_FIXTURE)
     lim, cat = fx["limits"], fx["catalog"]
@@ -80,7 +84,7 @@ def fixture_stress_backend(objective_path: Path, cache_dir: Path, reference=None
         service_groups={k: _service(k, v) for k, v in cat["service_groups"].items()},
         prebuilt_services={k: _service(k, v) for k, v in cat["prebuilt_services"].items()},
         links={k: Link(k, v["kind"], v["length_m"], v["requires_construction"], "fixture") for k, v in cat["links"].items()},
-        parking={k: Parking(k, "fixture") for k in cat["parking"]},
+        parking={k: Parking(k, "fixture", v.get("baseline_enabled", False)) for k, v in cat["parking"].items()},
     )
     candidates = {c: Candidate(c, a["kind"], target_id=a.get("target_id"), pct=a.get("pct"),
                                link_ids=tuple(a.get("link_ids", ()))) for c, a in fx["actions"].items()}
@@ -98,7 +102,11 @@ def fixture_stress_backend(objective_path: Path, cache_dir: Path, reference=None
         thresholds_min=(40, 45, 50),
         primary_t_min=lim["T_min"],
         cap_min=lim["C_min"],
-        objective_path=Path(objective_path),
+        objective_dir=Path(objective_dir),
+        model_hashes=FIXTURE_MODEL_HASHES,
+        model_version="fixture_stress",
+        od_set_id="fixture-ods",
+        closure_id="closure-28may-nizami",
         H_hours=lim["H_hours"],
         resources_for=lambda scenario: make_catalog_resources(candidates, catalog, scenario),
         evaluator_for=synthetic_evaluator_for(fx),
@@ -108,6 +116,7 @@ def fixture_stress_backend(objective_path: Path, cache_dir: Path, reference=None
         co2=Co2Inputs(candidates, catalog, bus_factor, car_factor,
                       {"bus_kg_per_vkm": f"P13 {bus_status}", "car_kg_per_pkm": f"P12 {car_status}"}),
         od_car_distance_km=od_car_distance_km,  # the fixture OD table has no car_distance_km
+        patches_for=lambda scenario: make_catalog_patches(candidates, catalog, scenario),
     )
 
 
@@ -117,11 +126,13 @@ def create_dev_app():
     from fastapi.staticfiles import StaticFiles
 
     DEV_DIR.mkdir(parents=True, exist_ok=True)
-    objective = DEV_DIR / "objective_decision.json"
-    if not objective.exists():
-        objective.write_text(json.dumps({"objective": "count", "note": "dev fixture: set explicitly, gate not run"}))
+    for profile in ("P", "B"):
+        objective = DEV_DIR / f"objective_decision_{profile}.json"
+        if not objective.exists():
+            objective.write_text(json.dumps({"objective": "count", "profile": profile, "input_hashes": FIXTURE_MODEL_HASHES,
+                                             "note": "dev fixture: set explicitly, gate not run"}))
     # dev reference package for the compare button: synthetic, not the real AYNA response
-    backend = fixture_stress_backend(objective, DEV_DIR, reference=("B", "C", "D"))
+    backend = fixture_stress_backend(DEV_DIR, DEV_DIR, reference=("B", "C", "D"))
     app = FastAPI(title="CityPilot decision panels (dev, synthetic fixture)")
     app.include_router(build_decision_router(backend))
     app.mount("/static", StaticFiles(directory=ROOT / "web" / "static"), name="static")

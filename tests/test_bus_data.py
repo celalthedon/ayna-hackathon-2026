@@ -206,7 +206,8 @@ def test_compute_resources_route2_base_cycle(services):
             base_headway_min=float(s["headway_default_min"]), full_cycle_km=float(s["cycle_km_geometry"]),
             speed_kmh=float(s["speed_kmh"]), stops_per_cycle=int(s["intermediate_stops"]),
             dwell_s=float(s["dwell_s"]), layover_min=float(s["layover_min"]), coverage=s["coverage"],
-            status=s["headway_status"], speed_status=s["speed_status"],
+            field_status={"base_headway_min": s["headway_status"], "speed_kmh": s["speed_status"],
+                          "dwell_s": s["dwell_status"], "layover_min": s["layover_status"]},
         )
     catalog = ModelCatalog(service_groups=groups, prebuilt_services={}, links={}, parking={})
     cut = Candidate("cut", "headway_cut", target_id="SG_R2", pct=0.2)

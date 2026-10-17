@@ -10,6 +10,8 @@ from citypilot.api_decision import DecisionBackend, build_decision_router
 from citypilot.decision_dev import fixture_stress_backend
 from citypilot.decision_engine import Limits, ResourceResult, load_fixture, make_fixture_evaluator
 
+from decision_testkit import FIXTURE_HASHES, write_objective as kit_write_objective
+
 FIXTURE = load_fixture(Path(__file__).resolve().parent / "fixtures" / "decision" / "fixture_4action.json")
 
 
@@ -35,16 +37,18 @@ class CountingEvaluators:
         return evaluator
 
 
-def write_objective(path, objective="count"):
-    path.write_text(json.dumps({"objective": objective, "note": "set explicitly in test; gate not run"}))
-    return path
+def write_objective(directory, objective="count", hashes=FIXTURE_HASHES):
+    """Committed objective for both profiles (set explicitly; the gate is not run)."""
+    for profile in ("P", "B"):
+        kit_write_objective(directory, objective, profile, hashes)
+    return directory
 
 
 def four_action_backend(tmp_path, counter, reference=("B", "C", "D"), objective=True):
     lim = FIXTURE["limits"]
-    objective_path = tmp_path / "objective_decision.json"
+    objective_dir = tmp_path / "objectives"
     if objective:
-        write_objective(objective_path)
+        write_objective(objective_dir)
     return DecisionBackend(
         config_hash="fixture_4action",
         input_hashes={"fixture": "fixture_4action"},
@@ -56,7 +60,11 @@ def four_action_backend(tmp_path, counter, reference=("B", "C", "D"), objective=
         thresholds_min=(40, 45, 50),
         primary_t_min=lim["T_min"],
         cap_min=lim["C_min"],
-        objective_path=objective_path,
+        objective_dir=objective_dir,
+        model_hashes=FIXTURE_HASHES,
+        model_version="fixture",
+        od_set_id="fixture-ods",
+        closure_id="closure-28may-nizami",
         H_hours=3.0,
         resources_for=lambda scenario: table_resources(FIXTURE["actions"]),
         evaluator_for=counter.evaluator_for,
@@ -95,7 +103,7 @@ def client(tmp_path, counter):
 
 def test_state(client):
     s = strict_json(client.get("/decision/state"))
-    assert s["objective"] == {"value": "count", "status": "committed"}
+    assert s["objective"] == {"P": {"value": "count", "status": "committed"}, "B": {"value": "count", "status": "committed"}}
     assert s["limits"]["B_h_bus_hours"] == 24 and s["limits"]["N_a_actions"] == 3
     assert s["profiles"] == ["P", "B"]
     assert s["config_hash"] == "fixture_4action"
@@ -187,7 +195,7 @@ def test_missing_objective_is_409(tmp_path, counter):
     c = client_for(four_action_backend(tmp_path, counter, objective=False))
     r = optimize(c, 24)
     assert r.status_code == 409 and r.json()["detail"] == "objective not committed"
-    assert strict_json(c.get("/decision/state"))["objective"] == {"value": None, "status": "not committed"}
+    assert strict_json(c.get("/decision/state"))["objective"]["P"] == {"value": None, "status": "not committed"}
     assert counter.calls == 0
 
 
@@ -209,7 +217,7 @@ def test_remove(client):
 
 @pytest.fixture
 def stress_client(tmp_path):
-    return client_for(fixture_stress_backend(write_objective(tmp_path / "objective_decision.json"), tmp_path / "cache"))
+    return client_for(fixture_stress_backend(write_objective(tmp_path / "objectives"), tmp_path / "cache"))
 
 
 def test_stress(stress_client):
@@ -241,7 +249,7 @@ def test_co2(stress_client):
 def test_co2_default_car_trip_km_from_od_table(tmp_path):
     # at the default point ACD restores OD1, OD2, OD4-OD8 (OD3 stays at 55 min)
     restored = {od: 6.0 for od in ("OD1", "OD2", "OD4", "OD5", "OD6", "OD7", "OD8")}
-    backend = fixture_stress_backend(write_objective(tmp_path / "objective_decision.json"), tmp_path / "cache",
+    backend = fixture_stress_backend(write_objective(tmp_path / "objectives"), tmp_path / "cache",
                                      od_car_distance_km=restored | {"OD3": None})
     r = strict_json(client_for(backend).post("/decision/co2", json={"package_ids": ["A", "C", "D"], "profile": "P"}))
     assert r["car_trip_km"] == 6.0 and r["break_even_trips"] == 510
@@ -250,7 +258,7 @@ def test_co2_default_car_trip_km_from_od_table(tmp_path):
 
 
 def test_co2_default_is_null_when_a_restored_od_lacks_car_distance(tmp_path):
-    backend = fixture_stress_backend(write_objective(tmp_path / "objective_decision.json"), tmp_path / "cache",
+    backend = fixture_stress_backend(write_objective(tmp_path / "objectives"), tmp_path / "cache",
                                      od_car_distance_km={"OD1": 6.0, "OD2": None})
     r = strict_json(client_for(backend).post("/decision/co2", json={"package_ids": ["A", "C", "D"], "profile": "P"}))
     assert r["car_trip_km"] is None and r["status"] == "needs_car_trip_km"
@@ -264,3 +272,46 @@ def test_co2_needs_a_catalog(client):
 def test_co2_negative_input_is_422(stress_client):
     r = stress_client.post("/decision/co2", json={"package_ids": ["A"], "car_trip_km": -1})
     assert r.status_code == 422
+
+
+
+def test_objective_for_another_model_is_409(tmp_path, counter):
+    backend = four_action_backend(tmp_path, counter, objective=False)
+    write_objective(tmp_path / "objectives", hashes={"normal": "old-normal", "disrupted": "old-disrupted"})
+    c = client_for(backend)
+    r = optimize(c, 24)
+    assert r.status_code == 409 and r.json()["detail"] == "objective decided for another model"
+    assert strict_json(c.get("/decision/state"))["objective"]["P"]["status"] == "objective decided for another model"
+    assert counter.calls == 0
+
+
+def test_objective_is_read_per_profile(tmp_path, counter):
+    backend = four_action_backend(tmp_path, counter, objective=False)
+    kit_write_objective(tmp_path / "objectives", "count", "P")
+    c = client_for(backend)
+    assert optimize(c, 24, profile="P").status_code == 200
+    r = optimize(c, 24, profile="B")
+    assert r.status_code == 409 and r.json()["detail"] == "objective not committed"
+
+
+def test_stress_not_available_from_adapter(tmp_path):
+    from citypilot.decision_engine import StressFactorsNotSupported
+
+    backend = fixture_stress_backend(write_objective(tmp_path / "objectives"), tmp_path / "cache")
+    fixture_evaluator_for = backend.evaluator_for
+
+    def adapter(profile, scenario):
+        if scenario.speed_factor != 1 or any(f != 1 for f in (scenario.headway_factor_by_group or {}).values()):
+            def reject(request):
+                raise StressFactorsNotSupported("non-default stress factors")
+            return reject
+        return fixture_evaluator_for(profile, scenario)
+
+    from dataclasses import replace
+    c = client_for(replace(backend, evaluator_for=adapter))
+    r = c.post("/decision/stress", json={"package_ids": ["A", "C", "D"], "profile": "P"})
+    assert r.status_code == 200
+    body = strict_json(r)
+    assert body["status"] == "not_available"
+    assert body["message"].startswith("stress not available for this model yet")
+    assert body["points"] == [] and body["worst"] is None
