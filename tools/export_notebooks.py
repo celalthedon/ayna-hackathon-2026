@@ -66,12 +66,6 @@ DECISION_CLASSES = frozenset({
     "RequestContext", "ResourceResult", "Scenario", "ServiceResource", "StressFactorsNotSupported",
     "StressGrid", "StressPoint", "StressResult", "StressSetup",
 })
-# TEMPORARY: local contract v1 stubs, removed by the decision migration PR that imports them
-# from citypilot.contracts. Pinned by name in tests/test_export_decision_allowlist.py.
-DECISION_TEMPORARY_STUB_CLASSES = frozenset({
-    "EvaluationResult", "Link", "ModelCatalog", "ODResult", "Parking", "RoutingPatch", "RoutingRequest",
-    "ServiceGroup",
-})
 DECISION_EXTRA_IMPORTS = frozenset({"csv", "itertools", "datetime", "yaml"})
 DECISION_NONLITERAL_DEFAULT_FUNCTIONS = frozenset({"count_lost", "gate_objective"})
 
@@ -83,7 +77,7 @@ def _safe_decision_module(source: str) -> None:
     except SyntaxError as exc:
         raise ExportError(f"Exported code must be plain Python (no magics): {exc}") from exc
     for node in module.body:
-        if isinstance(node, ast.ClassDef) and node.name in DECISION_CLASSES | DECISION_TEMPORARY_STUB_CLASSES:
+        if isinstance(node, ast.ClassDef) and node.name in DECISION_CLASSES:
             continue
         if isinstance(node, ast.Import) and {n.name for n in node.names} <= DECISION_EXTRA_IMPORTS:
             continue

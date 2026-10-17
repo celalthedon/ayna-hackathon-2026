@@ -6,13 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from citypilot.decision_engine import (
-    Candidate,
-    ModelCatalog,
-    Scenario,
-    ServiceGroup,
-    compute_resources,
-)
+from citypilot.contracts import ModelCatalog, Provenance, ServiceGroup, ServicePattern
+from citypilot.decision_engine import Candidate, Scenario, compute_resources
 
 CURATED = Path(__file__).resolve().parents[1] / "data" / "curated"
 EXPECTED_STOPS = {("2", "A"): 46, ("2", "B"): 45, ("14", "A"): 30, ("14", "B"): 29}
@@ -197,7 +192,14 @@ def test_length_diff_matches_columns(services):
         assert math.isclose(diff, float(s["length_diff_pct"]), abs_tol=1e-9)
 
 
-def test_compute_resources_route2_base_cycle(services):
+def test_compute_resources_route2_base_cycle(services, patterns):
+    source = Provenance(source_id="ayna-map-api", status="published", source="AYNA map API getBusById",
+                        evidence="data/curated/bus_services.csv")
+    stops = {}
+    for r in sorted(patterns, key=lambda r: (r["pattern_id"], int(r["seq"]))):
+        stops.setdefault((r["route"], r["direction"], r["pattern_id"]), []).append(r["stop_id"])
+    service_patterns = tuple(ServicePattern(pattern_id=pid, route_id=route, direction_id=d, stop_ids=tuple(ids),
+                                            provenance=source) for (route, d, pid), ids in stops.items())
     groups = {}
     for route, s in services.items():
         sid = f"SG_R{route}"
@@ -206,10 +208,14 @@ def test_compute_resources_route2_base_cycle(services):
             base_headway_min=float(s["headway_default_min"]), full_cycle_km=float(s["cycle_km_geometry"]),
             speed_kmh=float(s["speed_kmh"]), stops_per_cycle=int(s["intermediate_stops"]),
             dwell_s=float(s["dwell_s"]), layover_min=float(s["layover_min"]), coverage=s["coverage"],
-            field_status={"base_headway_min": s["headway_status"], "speed_kmh": s["speed_status"],
-                          "dwell_s": s["dwell_status"], "layover_min": s["layover_status"]},
+            field_status={"pattern_ids": "curated", "base_headway_min": s["headway_status"],
+                          "full_cycle_km": "modelled", "speed_kmh": s["speed_status"], "stops_per_cycle": "curated",
+                          "dwell_s": s["dwell_status"], "layover_min": s["layover_status"], "coverage": "curated"},
+            provenance=source,
         )
-    catalog = ModelCatalog(service_groups=groups, prebuilt_services={}, links={}, parking={})
+    catalog = ModelCatalog(model_version="curated-bus", od_set_id="none", service_groups=groups, prebuilt_services={},
+                           links={}, parking={}, patterns=service_patterns, sources=(source,),
+                           stop_ids=tuple(sorted({sid for ids in stops.values() for sid in ids})))
     cut = Candidate("cut", "headway_cut", target_id="SG_R2", pct=0.2)
     result = compute_resources([cut], catalog, Scenario(speed_factor=1.0, headway_factor=1.0, H_hours=3.0))
     base_cycle = next(x for x in result.per_service if x.service_id == "SG_R2").base_cycle_min

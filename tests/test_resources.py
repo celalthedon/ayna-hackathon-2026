@@ -6,31 +6,25 @@ import pytest
 
 from citypilot.decision_engine import (
     Candidate,
-    Link,
-    ModelCatalog,
-    Parking,
     Scenario,
-    ServiceGroup,
     compute_resources,
     load_scenario,
     vehicles,
 )
+
+from decision_testkit import catalog as kit_catalog, link, parking, service as kit_service
 
 LIMITS_PATH = Path(__file__).resolve().parents[1] / "config" / "limits.yaml"
 FIXTURE = "fixture"
 
 
 def service(sid, headway, km, speed, stops, dwell, layover, coverage="full"):
-    return ServiceGroup(
-        service_group_id=sid, pattern_ids=(f"{sid}_out", f"{sid}_in"), base_headway_min=headway,
-        full_cycle_km=km, speed_kmh=speed, stops_per_cycle=stops, dwell_s=dwell, layover_min=layover,
-        coverage=coverage, field_status={"base_headway_min": FIXTURE, "speed_kmh": FIXTURE},
-    )
+    return kit_service(sid, headway, km, speed, stops, dwell, layover, coverage, pattern_ids=(f"{sid}_out", f"{sid}_in"))
 
 
 @pytest.fixture
 def catalog():
-    return ModelCatalog(
+    return kit_catalog(
         service_groups={
             "SG_R2": service("SG_R2", 10, 12, 15, 30, 20, 5),
             "SG_R14": service("SG_R14", 12, None, None, None, None, None, coverage="partial"),
@@ -40,11 +34,11 @@ def catalog():
             "SVC_LOOP": service("SVC_LOOP", 20, 4, 20, 4, 30, 3),
         },
         links={
-            "L1": Link("L1", "walk", 300, False, FIXTURE),
-            "L2": Link("L2", "bike", 1200, True, FIXTURE),
-            "L3": Link("L3", "walk", 40, True, FIXTURE),
+            "L1": link("L1", "walk", 300, False),
+            "L2": link("L2", "bike", 1200, True),
+            "L3": link("L3", "walk", 40, True),
         },
-        parking={"P1": Parking("P1", FIXTURE, baseline_enabled=False)},
+        parking={"P1": parking("P1", baseline_enabled=False)},
     )
 
 

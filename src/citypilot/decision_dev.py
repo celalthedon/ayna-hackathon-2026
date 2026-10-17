@@ -10,14 +10,11 @@ import json
 from pathlib import Path
 
 from citypilot.api_decision import Co2Inputs, DecisionBackend, build_decision_router
+from citypilot.contracts import Link, ModelCatalog, Parking, Provenance, ServiceGroup, ServicePattern
 from citypilot.decision_engine import (
     Candidate,
     Limits,
-    Link,
-    ModelCatalog,
-    Parking,
     Scenario,
-    ServiceGroup,
     StressGrid,
     load_fixture,
     make_catalog_patches,
@@ -30,13 +27,30 @@ STRESS_FIXTURE = ROOT / "tests" / "fixtures" / "decision" / "fixture_stress.json
 ASSUMPTIONS = ROOT / "data" / "curated" / "assumptions.csv"
 DEV_DIR = ROOT / "outputs" / "cache" / "decision_dev"
 # synthetic normal / disrupted config hashes of the fixture model
-FIXTURE_MODEL_HASHES = {"normal": "fixture-normal", "disrupted": "fixture-disrupted"}
+FIXTURE_MODEL_HASHES = {name: hashlib.sha256(f"fixture-{name}".encode()).hexdigest()
+                        for name in ("normal", "disrupted")}
+
+
+SYNTHETIC = Provenance(source_id="synthetic-dev-fixture", status="assumption", source="fixture_stress.json",
+                       evidence="synthetic test fixture, not a city result", synthetic=True)
+SERVICE_FIELDS = ("pattern_ids", "base_headway_min", "full_cycle_km", "speed_kmh", "stops_per_cycle", "dwell_s",
+                  "layover_min", "coverage")
 
 
 def _service(sid: str, v: dict) -> ServiceGroup:
-    return ServiceGroup(sid, (), v["base_headway_min"], v["full_cycle_km"], v["speed_kmh"], v["stops_per_cycle"],
-                        v["dwell_s"], v["layover_min"], v["coverage"],
-                        {f: "fixture" for f in ("base_headway_min", "full_cycle_km", "speed_kmh")})
+    return ServiceGroup(service_group_id=sid, pattern_ids=(f"{sid}_A",), base_headway_min=v["base_headway_min"],
+                        full_cycle_km=v["full_cycle_km"], speed_kmh=v["speed_kmh"], stops_per_cycle=v["stops_per_cycle"],
+                        dwell_s=v["dwell_s"], layover_min=v["layover_min"], coverage=v["coverage"],
+                        field_status={f: "assumption" for f in SERVICE_FIELDS}, provenance=SYNTHETIC)
+
+
+def _catalog(service_groups: dict, prebuilt_services: dict, links: dict, parking: dict) -> ModelCatalog:
+    groups = {**service_groups, **prebuilt_services}
+    patterns = tuple(ServicePattern(pattern_id=p, route_id=sid, direction_id="A", stop_ids=(f"{p}_s1", f"{p}_s2"),
+                                    provenance=SYNTHETIC) for sid, g in groups.items() for p in g.pattern_ids)
+    return ModelCatalog(model_version="fixture_stress", od_set_id="fixture-ods", service_groups=service_groups,
+                        prebuilt_services=prebuilt_services, links=links, parking=parking, patterns=patterns,
+                        sources=(SYNTHETIC,), stop_ids=tuple(s for p in patterns for s in p.stop_ids))
 
 
 def _assumption(param_id: str) -> tuple[float, str]:
@@ -80,11 +94,13 @@ def fixture_stress_backend(objective_dir: Path, cache_dir: Path, reference=None,
                            od_car_distance_km=None) -> DecisionBackend:
     fx = load_fixture(STRESS_FIXTURE)
     lim, cat = fx["limits"], fx["catalog"]
-    catalog = ModelCatalog(
-        service_groups={k: _service(k, v) for k, v in cat["service_groups"].items()},
-        prebuilt_services={k: _service(k, v) for k, v in cat["prebuilt_services"].items()},
-        links={k: Link(k, v["kind"], v["length_m"], v["requires_construction"], "fixture") for k, v in cat["links"].items()},
-        parking={k: Parking(k, "fixture", v.get("baseline_enabled", False)) for k, v in cat["parking"].items()},
+    catalog = _catalog(
+        {k: _service(k, v) for k, v in cat["service_groups"].items()},
+        {k: _service(k, v) for k, v in cat["prebuilt_services"].items()},
+        {k: Link(link_id=k, kind=v["kind"], length_m=v["length_m"], requires_construction=v["requires_construction"],
+                 status="assumption", provenance=SYNTHETIC) for k, v in cat["links"].items()},
+        {k: Parking(parking_id=k, status="assumption", baseline_enabled=v.get("baseline_enabled", False),
+                    provenance=SYNTHETIC) for k, v in cat["parking"].items()},
     )
     candidates = {c: Candidate(c, a["kind"], target_id=a.get("target_id"), pct=a.get("pct"),
                                link_ids=tuple(a.get("link_ids", ()))) for c, a in fx["actions"].items()}
