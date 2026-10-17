@@ -1,0 +1,49 @@
+{
+  "label": "synthetic test fixture, not a city result",
+  "status": "fixture",
+  "time_model": "synthetic: t' = walk_min + h'/2 + (t - walk_min - h0/2) / speed_factor; h0 = the ridden service's headway at the default point, h' = at the stress point",
+  "walk_min": 8,
+  "objective": "count",
+  "limits": {
+    "B_h_bus_hours": 30,
+    "K_new_infra_km": 2.0,
+    "N_a_actions": 3,
+    "H_hours": 3,
+    "T_min": 45,
+    "C_min": 120,
+    "max_exact_packages": 1024
+  },
+  "catalog": {
+    "service_groups": {
+      "SG_R2": {"full_cycle_km": 44.4, "speed_kmh": 24.2, "stops_per_cycle": 87, "dwell_s": 25, "layover_min": 10, "base_headway_min": 7.5, "coverage": "full"}
+    },
+    "prebuilt_services": {
+      "SVC_SHUTTLE": {"full_cycle_km": 9.0, "speed_kmh": 24.2, "stops_per_cycle": 6, "dwell_s": 25, "layover_min": 4, "base_headway_min": 8, "coverage": "full"}
+    },
+    "links": {
+      "L_D": {"kind": "walk", "length_m": 40, "requires_construction": true}
+    },
+    "parking": {}
+  },
+  "actions": {
+    "A": {"kind": "headway_cut", "target_id": "SG_R2", "pct": 0.15, "distance_m": 31},
+    "B": {"kind": "headway_cut", "target_id": "SG_R2", "pct": 0.30, "distance_m": 31},
+    "C": {"kind": "activate_service", "target_id": "SVC_SHUTTLE", "distance_m": 0},
+    "D": {"kind": "link_bundle", "link_ids": ["L_D"], "distance_m": 40}
+  },
+  "exclusions": [["A", "B"]],
+  "ods": [
+    {"od_id": "OD1", "disrupted_min": 60, "disrupted_rides": "SG_R2:base", "options": [{"requires": ["A"], "minutes": 40, "rides": "SG_R2:new"}, {"requires": ["B"], "minutes": 38, "rides": "SG_R2:new"}]},
+    {"od_id": "OD2", "disrupted_min": 62, "disrupted_rides": "SG_R2:base", "options": [{"requires": ["A"], "minutes": 42, "rides": "SG_R2:new"}, {"requires": ["B"], "minutes": 40, "rides": "SG_R2:new"}]},
+    {"od_id": "OD3", "disrupted_min": 55, "disrupted_rides": "SG_R2:base", "options": [{"requires": ["B"], "minutes": 44, "rides": "SG_R2:new"}]},
+    {"od_id": "OD4", "disrupted_min": 58, "disrupted_rides": "SG_R2:base", "options": [{"requires": ["B"], "minutes": 43, "rides": "SG_R2:new"}, {"requires": ["C"], "minutes": 41, "rides": "SVC_SHUTTLE"}]},
+    {"od_id": "OD5", "disrupted_min": null, "disrupted_rides": null, "options": [{"requires": ["C"], "minutes": 39, "rides": "SVC_SHUTTLE"}]},
+    {"od_id": "OD6", "disrupted_min": 50, "disrupted_rides": "SG_R2:base", "options": [{"requires": ["C"], "minutes": 44, "rides": "SVC_SHUTTLE"}]},
+    {"od_id": "OD7", "disrupted_min": 50, "disrupted_rides": "SG_R2:base", "options": [{"requires": ["C"], "minutes": 48, "rides": "SVC_SHUTTLE"}, {"requires": ["C", "D"], "minutes": 44, "rides": "SVC_SHUTTLE"}]},
+    {"od_id": "OD8", "disrupted_min": 52, "disrupted_rides": "SG_R2:base", "options": [{"requires": ["C"], "minutes": 49, "rides": "SVC_SHUTTLE"}, {"requires": ["C", "D"], "minutes": 45, "rides": "SVC_SHUTTLE"}]}
+  ],
+  "grid": {
+    "speed_levels_kmh": {"low": 12, "default": 18, "high": 25},
+    "headway_levels_min": {"SG_R2": {"low": 6, "default": 7.5, "high": 10}}
+  }
+}

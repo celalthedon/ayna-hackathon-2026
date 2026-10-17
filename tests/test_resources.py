@@ -215,3 +215,33 @@ def test_e16_bad_headway(headway):
 def test_e17_bad_pct(pct):
     with pytest.raises(ValueError):
         Candidate("bad", "headway_cut", target_id="SG_R2", pct=pct)
+
+
+def test_group_headway_factors_must_cover_every_group(catalog):
+    partial = Scenario(1.0, 1.0, 3.0, headway_factor_by_group={"SG_R2": 0.8})
+    with pytest.raises(ValueError, match="SG_R14"):
+        compute_resources([C["a1"]], catalog, partial)
+    with pytest.raises(ValueError, match="SG_R14"):
+        partial.group_headway_factor("SG_R14")
+
+
+def test_group_headway_factors_apply_per_group(catalog):
+    # SG_R2 base headway 10 x 0.8 = 8 -> 63/8 = 7.875 -> 8 vehicles; cut 20% -> 6.4 -> 10 vehicles
+    full = Scenario(1.0, 1.0, 3.0, headway_factor_by_group={"SG_R2": 0.8, "SG_R14": 1.0})
+    r = run(catalog, "a1", scenario=full)
+    assert (svc(r, "SG_R2").base_vehicles, svc(r, "SG_R2").new_vehicles) == (8, 10)
+    assert r.added_bus_hours == 6
+
+
+@pytest.mark.parametrize("extra", ["SVC_SHUTTLE", "SG_UNKNOWN"])
+def test_group_headway_factors_reject_non_group_ids(catalog, extra):
+    factors = {"SG_R2": 1.0, "SG_R14": 1.0, extra: 0.8}
+    with pytest.raises(ValueError, match=extra):
+        run(catalog, "a3", scenario=Scenario(1.0, 1.0, 3.0, headway_factor_by_group=factors))
+
+
+def test_prebuilt_service_keeps_design_headway(catalog):
+    # only speed applies: 9 km at 18 x 0.5 km/h = 60 min + 3 dwell + 4 layover = 67; headway 8 -> 9 vehicles
+    slow = Scenario(0.5, 1.0, 3.0, headway_factor_by_group={"SG_R2": 0.8, "SG_R14": 1.0})
+    s = svc(run(catalog, "a3", scenario=slow), "SVC_SHUTTLE")
+    assert s.new_headway_min == 8 and math.isclose(s.new_cycle_min, 67) and s.new_vehicles == 9
