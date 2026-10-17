@@ -1,0 +1,2 @@
+Launch tools/launch_citypilot.ps1 from Windows PowerShell, then open http://127.0.0.1:8000/ .
+Explicit immutable bundle and M configuration are in that script. No file:// execution.

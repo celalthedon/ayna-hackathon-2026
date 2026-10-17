@@ -55,5 +55,8 @@ def create_app(settings: RoutingSettings | None = None, *, app: FastAPI | None =
     app.router.lifespan_context = lifespan
     app.state.citypilot_routing = runtime
     app.include_router(build_routing_router(runtime))
+    from citypilot.ui import mount_ui
+    mount_ui(app, decision_available=_has_route_prefix(app, "/decision"),
+             serve_root=not _has_route_prefix(app, "/"))
     app.openapi_schema = None  # existing factories may already have built it
     return app
