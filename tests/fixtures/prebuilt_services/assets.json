@@ -1,0 +1,182 @@
+{
+  "access_policy": {
+    "excessive_snap": "unreachable",
+    "max_snap_m": 100.0
+  },
+  "patterns": [
+    {
+      "pattern": {
+        "direction_id": "SYN_SHUTTLE_OUT",
+        "pattern_id": "SYN_SHUTTLE_OUT",
+        "provenance": {
+          "evidence": "Synthetic Insaatcilar-28 May shuttle: 6000 m each direction and schematic endpoint geometry explicitly assumed. Design 6/9 min intervals. Mean existing R2/R14 calibrated speed is a design assumption, not a published M speed.",
+          "source": "Phase-2 test fixture; not researched M-line data",
+          "source_date": null,
+          "source_id": "synthetic:phase2-shuttle",
+          "status": "assumption",
+          "synthetic": true
+        },
+        "route_id": "SYN_SHUTTLE",
+        "stop_ids": [
+          "SYN_INSAAT",
+          "SYN_28MAY"
+        ]
+      },
+      "segment_geometry": [
+        {
+          "coordinates": [
+            [
+              49.80276400000001,
+              40.39137900000001
+            ],
+            [
+              49.848843,
+              40.37971199999999
+            ]
+          ],
+          "type": "LineString"
+        }
+      ],
+      "segment_m": [
+        6000.0
+      ]
+    },
+    {
+      "pattern": {
+        "direction_id": "SYN_SHUTTLE_BACK",
+        "pattern_id": "SYN_SHUTTLE_BACK",
+        "provenance": {
+          "evidence": "Synthetic Insaatcilar-28 May shuttle: 6000 m each direction and schematic endpoint geometry explicitly assumed. Design 6/9 min intervals. Mean existing R2/R14 calibrated speed is a design assumption, not a published M speed.",
+          "source": "Phase-2 test fixture; not researched M-line data",
+          "source_date": null,
+          "source_id": "synthetic:phase2-shuttle",
+          "status": "assumption",
+          "synthetic": true
+        },
+        "route_id": "SYN_SHUTTLE",
+        "stop_ids": [
+          "SYN_28MAY",
+          "SYN_INSAAT"
+        ]
+      },
+      "segment_geometry": [
+        {
+          "coordinates": [
+            [
+              49.848843,
+              40.37971199999999
+            ],
+            [
+              49.80276400000001,
+              40.39137900000001
+            ]
+          ],
+          "type": "LineString"
+        }
+      ],
+      "segment_m": [
+        6000.0
+      ]
+    }
+  ],
+  "prebuilt_services": [
+    {
+      "base_headway_min": 6.0,
+      "coverage": "full",
+      "dwell_s": 25.0,
+      "field_status": {
+        "base_headway_min": "assumption",
+        "coverage": "assumption",
+        "dwell_s": "assumption",
+        "full_cycle_km": "assumption",
+        "layover_min": "assumption",
+        "pattern_ids": "assumption",
+        "speed_kmh": "assumption",
+        "stops_per_cycle": "assumption"
+      },
+      "full_cycle_km": 12.0,
+      "layover_min": 10.0,
+      "pattern_ids": [
+        "SYN_SHUTTLE_OUT",
+        "SYN_SHUTTLE_BACK"
+      ],
+      "provenance": {
+        "evidence": "Synthetic Insaatcilar-28 May shuttle: 6000 m each direction and schematic endpoint geometry explicitly assumed. Design 6/9 min intervals. Mean existing R2/R14 calibrated speed is a design assumption, not a published M speed.",
+        "source": "Phase-2 test fixture; not researched M-line data",
+        "source_date": null,
+        "source_id": "synthetic:phase2-shuttle",
+        "status": "assumption",
+        "synthetic": true
+      },
+      "service_group_id": "SYN_INS_28_6",
+      "speed_kmh": 24.309068600209667,
+      "stops_per_cycle": 0
+    },
+    {
+      "base_headway_min": 9.0,
+      "coverage": "full",
+      "dwell_s": 25.0,
+      "field_status": {
+        "base_headway_min": "assumption",
+        "coverage": "assumption",
+        "dwell_s": "assumption",
+        "full_cycle_km": "assumption",
+        "layover_min": "assumption",
+        "pattern_ids": "assumption",
+        "speed_kmh": "assumption",
+        "stops_per_cycle": "assumption"
+      },
+      "full_cycle_km": 12.0,
+      "layover_min": 10.0,
+      "pattern_ids": [
+        "SYN_SHUTTLE_OUT",
+        "SYN_SHUTTLE_BACK"
+      ],
+      "provenance": {
+        "evidence": "Synthetic Insaatcilar-28 May shuttle: 6000 m each direction and schematic endpoint geometry explicitly assumed. Design 6/9 min intervals. Mean existing R2/R14 calibrated speed is a design assumption, not a published M speed.",
+        "source": "Phase-2 test fixture; not researched M-line data",
+        "source_date": null,
+        "source_id": "synthetic:phase2-shuttle",
+        "status": "assumption",
+        "synthetic": true
+      },
+      "service_group_id": "SYN_INS_28_9",
+      "speed_kmh": 24.309068600209667,
+      "stops_per_cycle": 0
+    }
+  ],
+  "stops": [
+    {
+      "coordinates": [
+        49.80276400000001,
+        40.39137900000001
+      ],
+      "model_node_id": 118425,
+      "provenance": {
+        "evidence": "Synthetic Insaatcilar-28 May shuttle: 6000 m each direction and schematic endpoint geometry explicitly assumed. Design 6/9 min intervals. Mean existing R2/R14 calibrated speed is a design assumption, not a published M speed.",
+        "source": "Phase-2 test fixture; not researched M-line data",
+        "source_date": null,
+        "source_id": "synthetic:phase2-shuttle",
+        "status": "assumption",
+        "synthetic": true
+      },
+      "stop_id": "SYN_INSAAT"
+    },
+    {
+      "coordinates": [
+        49.848843,
+        40.37971199999999
+      ],
+      "model_node_id": 118435,
+      "provenance": {
+        "evidence": "Synthetic Insaatcilar-28 May shuttle: 6000 m each direction and schematic endpoint geometry explicitly assumed. Design 6/9 min intervals. Mean existing R2/R14 calibrated speed is a design assumption, not a published M speed.",
+        "source": "Phase-2 test fixture; not researched M-line data",
+        "source_date": null,
+        "source_id": "synthetic:phase2-shuttle",
+        "status": "assumption",
+        "synthetic": true
+      },
+      "stop_id": "SYN_28MAY"
+    }
+  ]
+}
