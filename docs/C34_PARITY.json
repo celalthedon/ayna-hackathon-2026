@@ -1,0 +1,119 @@
+{
+  "contract_version": "1.0",
+  "interpreter": "C:\\Users\\celal\\OneDrive\\Desktop\\ayna-hackathon-2026\\ayna-hackathon-2026\\notebooks\\citypilot-env\\Scripts\\python.exe",
+  "bundle_hash": "9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066",
+  "od_hash": "10c1b58f1d704cec25b11936da32c2c09bc995323e8a4083fd0bd46f50286ac8",
+  "verified_bundle_file_count": 49,
+  "scenarios": [
+    {
+      "profile": "P",
+      "state": "normal",
+      "rows": 2718,
+      "counts": {
+        "40": 2060,
+        "45": 2339,
+        "50": 2496
+      },
+      "capped_sum": 94375.40594217333,
+      "maximum_row_error_min": 7.105427357601002e-15,
+      "maximum_capped_row_error_min": 7.105427357601002e-15,
+      "sum_error_min": 0.0
+    },
+    {
+      "profile": "P",
+      "state": "disrupted",
+      "rows": 2718,
+      "counts": {
+        "40": 636,
+        "45": 1191,
+        "50": 1697
+      },
+      "capped_sum": 128583.2876033397,
+      "maximum_row_error_min": 1.4210854715202004e-14,
+      "maximum_capped_row_error_min": 1.4210854715202004e-14,
+      "sum_error_min": -1.4551915228366852e-11
+    },
+    {
+      "profile": "B",
+      "state": "normal",
+      "rows": 2718,
+      "counts": {
+        "40": 2406,
+        "45": 2506,
+        "50": 2511
+      },
+      "capped_sum": 73577.91477922363,
+      "maximum_row_error_min": 1.4210854715202004e-14,
+      "maximum_capped_row_error_min": 1.4210854715202004e-14,
+      "sum_error_min": -1.4551915228366852e-11
+    },
+    {
+      "profile": "B",
+      "state": "disrupted",
+      "rows": 2718,
+      "counts": {
+        "40": 2406,
+        "45": 2506,
+        "50": 2511
+      },
+      "capped_sum": 74039.0312696655,
+      "maximum_row_error_min": 1.4210854715202004e-14,
+      "maximum_capped_row_error_min": 1.4210854715202004e-14,
+      "sum_error_min": -1.4551915228366852e-11
+    }
+  ],
+  "rows_checked": 10872,
+  "tests": {
+    "count": 26,
+    "failures": 0,
+    "errors": 0,
+    "duration_seconds": 50.374
+  },
+  "non_export_cells_preserved": 67,
+  "protected_hashes_verified": {
+    "outputs\\notebook_recovery\\executed_cells_20261017_162338_001689.json": "0147778f8e7c4f95cf2c9abf6f85aab53dee7fc9c818453818b94bb7e55b4ab4",
+    "outputs/c4_model_alpha_20261017_155941_581069/manifest.json": "a372e5ade6df97dbf99228306ce79bc2e1ff3231bce41a5c32e29b29d4dcd3f9",
+    "data\\curated\\assumptions.csv": "185aff39b99bf6297af1972ff8389372e1bd80749622113c5724ebc0e4e1ffc3",
+    "data\\curated\\bus_patterns.csv": "a4aed08b0ade8f4a45cc0393e1115fc6f8b740c16a944ef73ce768d47630fc2e",
+    "data\\curated\\bus_route_geometry.geojson": "03bb3976e2b653a05ed379a98085b3f6bbacfc6199ffef329a2e713fbf35c0a0",
+    "data\\curated\\bus_services.csv": "0a75d51746a6667422b110b808e47f0a7d1b1bcaa4001a653f678d127772c834",
+    "data\\curated\\bus_stops.csv": "344cacd8ab9adf85f312470a71a41d4d30d299c4912fe57ac5a17fcda3c1ad7c",
+    "data\\curated\\SOURCE_ayna_bus.json": "6709ab1a330f52673d6b04d6515ab070bf5d44458921b21a6332c6c3be92aaac",
+    "config\\limits.yaml": "075e8553702aecdff6417e96806637cb38f5e5ee065bf081c9298dda5c6044f6"
+  },
+  "history_executed": false,
+  "whole_notebook_clean_run_verified": false,
+  "publication_verification": {
+    "base_commit": "91d034ed4586b36ef4b96a2453d414eb382541d2",
+    "branch": "celal/c4-routing-contract-v1",
+    "focused_tests_passed": 26,
+    "failures": 0,
+    "errors": 0,
+    "suites": [
+      {
+        "pattern": "test_routing.py",
+        "tests": 9,
+        "seconds": 0.28
+      },
+      {
+        "pattern": "test_export.py",
+        "tests": 8,
+        "seconds": 0.362
+      },
+      {
+        "pattern": "test_baseline_adapters.py",
+        "tests": 9,
+        "seconds": 33.104
+      }
+    ],
+    "total_test_seconds": 33.746,
+    "exporter_check": "passed",
+    "baseline_rows_rechecked": 10872,
+    "baseline_tolerance_min": 1e-06,
+    "bundle_source": "external immutable bundle in preserved Desktop checkout",
+    "all_main_files_outside_allowlist_unchanged": true,
+    "ali_consumer_integration": "pending, not tested",
+    "ali_suite_not_run_reason": "API test dependencies unavailable in existing interpreter; current main has no tracked generated decision_engine.py",
+    "whole_raw_data_notebook_clean_run": "pending"
+  }
+}
