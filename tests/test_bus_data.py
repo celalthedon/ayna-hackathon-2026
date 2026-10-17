@@ -142,6 +142,7 @@ def test_headways(services):
 
 RAW_ASSUMPTIONS = CURATED.parent / "raw" / "ayna_bus" / "phase1" / "templates" / "assumptions.csv"
 HEADWAY_PARAM = {"2": "P1", "14": "P2"}
+RAW_ASSUMPTIONS_P16_P18 = CURATED.parent / "raw" / "ayna_bus" / "phase2" / "templates" / "assumptions_P16_P18.csv"
 
 
 @pytest.fixture(scope="module")
@@ -166,8 +167,10 @@ def test_curated_p1_p2_replace_first_round_estimate(assumptions):
 
 
 def test_curated_assumptions_keep_other_rows_unchanged(assumptions):
-    with open(RAW_ASSUMPTIONS, newline="", encoding="utf-8-sig") as f:
-        raw = {r["param_id"]: r for r in csv.DictReader(f)}
+    raw = {}
+    for path in (RAW_ASSUMPTIONS, RAW_ASSUMPTIONS_P16_P18):
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            raw.update({r["param_id"]: r for r in csv.DictReader(f)})
     assert set(assumptions) == set(raw)
     for pid, r in raw.items():
         if pid not in HEADWAY_PARAM.values():
@@ -212,3 +215,14 @@ def test_source_provenance_tracked():
     raw_path = CURATED.parent / "raw" / "ayna_bus" / "SOURCE.json"
     if raw_path.exists():
         assert curated["zip_sha256"] == json.loads(raw_path.read_text(encoding="utf-8"))["zip_sha256"]
+
+
+def test_assumptions_p1_to_p18_complete(assumptions):
+    assert [f"P{i}" for i in range(1, 19)] == sorted(assumptions, key=lambda p: int(p[1:]))
+    for pid, r in assumptions.items():
+        assert r["status"].strip(), pid
+        try:
+            low, default, high = (float(r[k]) for k in ("value_low", "value_default", "value_high"))
+        except ValueError:
+            continue  # non-numeric parameter (P15: yes/no)
+        assert low <= default <= high, pid
