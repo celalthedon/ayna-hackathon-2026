@@ -14,3 +14,8 @@ venv/
 /datasets/
 /outputs/*
 !/outputs/.gitkeep
+
+# Existing Desktop notebook environment and local raw archives
+/notebooks/citypilot-env/
+/data/raw/AYNA_Datasets_43.zip
+/data/raw/azerbaijan-261016-free.shp.zip
