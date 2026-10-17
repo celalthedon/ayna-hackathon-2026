@@ -215,3 +215,19 @@ def test_e16_bad_headway(headway):
 def test_e17_bad_pct(pct):
     with pytest.raises(ValueError):
         Candidate("bad", "headway_cut", target_id="SG_R2", pct=pct)
+
+
+def test_group_headway_factors_must_cover_every_group(catalog):
+    partial = Scenario(1.0, 1.0, 3.0, headway_factor_by_group={"SG_R2": 0.8})
+    with pytest.raises(ValueError, match="SG_R14"):
+        compute_resources([C["a1"]], catalog, partial)
+    with pytest.raises(ValueError, match="SG_R14"):
+        partial.group_headway_factor("SG_R14")
+
+
+def test_group_headway_factors_apply_per_group(catalog):
+    # SG_R2 base headway 10 x 0.8 = 8 -> 63/8 = 7.875 -> 8 vehicles; cut 20% -> 6.4 -> 10 vehicles
+    full = Scenario(1.0, 1.0, 3.0, headway_factor_by_group={"SG_R2": 0.8, "SG_R14": 1.0})
+    r = run(catalog, "a1", scenario=full)
+    assert (svc(r, "SG_R2").base_vehicles, svc(r, "SG_R2").new_vehicles) == (8, 10)
+    assert r.added_bus_hours == 6
