@@ -1,0 +1,13 @@
+{
+  "zip_file": "CityPilot_Tehvil_2026-10-17.zip",
+  "zip_sha256": "b13c7b7268e4721d5472ff56d689630768186f8652b7aa031118211a8d3e68aa",
+  "extraction_date": "2026-10-17",
+  "contents": {
+    "phase1/": "01_phase1/ (reviewed, newer version of phase 1)",
+    "phase2/": "02_phase2/",
+    "00_Tehvil_Xulasesi.pdf": "delivery summary"
+  },
+  "delivered_by": "delivered by teammate (non-coder, ChatGPT-assisted, checked_by fields say so)",
+  "supersedes": "phase1 supersedes the older phase-1 delivery citypilot_all_tasks.zip, which must not be used",
+  "handling": "extracted into an empty temp directory; no absolute or '..' paths, no symlinks; files copied unchanged"
+}

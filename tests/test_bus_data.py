@@ -205,3 +205,10 @@ def test_compute_resources_route2_base_cycle(services):
     result = compute_resources([cut], catalog, Scenario(speed_factor=1.0, headway_factor=1.0, H_hours=3.0))
     base_cycle = next(x for x in result.per_service if x.service_id == "SG_R2").base_cycle_min
     assert abs(base_cycle - (2 * 73 + float(services["2"]["layover_min"]))) < 1
+
+
+def test_source_provenance_tracked():
+    curated = json.loads((CURATED / "SOURCE_ayna_bus.json").read_text(encoding="utf-8"))
+    raw_path = CURATED.parent / "raw" / "ayna_bus" / "SOURCE.json"
+    if raw_path.exists():
+        assert curated["zip_sha256"] == json.loads(raw_path.read_text(encoding="utf-8"))["zip_sha256"]
