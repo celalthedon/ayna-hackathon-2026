@@ -7,9 +7,6 @@ from citypilot.decision_engine import (
     Candidate,
     DecisionProblem,
     Limits,
-    Link,
-    ModelCatalog,
-    Parking,
     RoutingPatch,
     Scenario,
     build_request,
@@ -23,7 +20,7 @@ from citypilot.decision_engine import (
     validate_package,
 )
 
-from decision_testkit import FIXTURE_HASHES, fixture_context, service
+from decision_testkit import FIXTURE_HASHES, catalog as kit_catalog, fixture_context, link, parking as kit_parking, service
 
 FX = load_fixture(Path(__file__).resolve().parent / "fixtures" / "decision" / "fixture_stress.json")
 DEFAULT = Scenario(1.0, 1.0, 3.0)
@@ -33,10 +30,10 @@ def catalog(parking=None):
     cat = FX["catalog"]
     svc = lambda k, v: service(k, v["base_headway_min"], v["full_cycle_km"], v["speed_kmh"], v["stops_per_cycle"],
                                v["dwell_s"], v["layover_min"], v["coverage"])
-    return ModelCatalog(
+    return kit_catalog(
         service_groups={k: svc(k, v) for k, v in cat["service_groups"].items()},
         prebuilt_services={k: svc(k, v) for k, v in cat["prebuilt_services"].items()},
-        links={k: Link(k, v["kind"], v["length_m"], v["requires_construction"], "fixture") for k, v in cat["links"].items()},
+        links={k: link(k, v["kind"], v["length_m"], v["requires_construction"]) for k, v in cat["links"].items()},
         parking=parking or {},
     )
 
@@ -68,15 +65,15 @@ def problem(tmp_path, *, candidates=CANDIDATES, cat=CATALOG, prerequisites=None,
 # --- compile_package ---
 
 def test_headway_cut_is_a_final_exact_value():
-    assert compile_package(["A"], CATALOG, DEFAULT, CANDIDATES) == (RoutingPatch("set_service_headway", "SG_R2", 6.375),)
+    assert compile_package(["A"], CATALOG, DEFAULT, CANDIDATES) == (RoutingPatch(kind="set_service_headway", target_id="SG_R2", headway_min=6.375),)
     assert compile_package(["B"], CATALOG, DEFAULT, CANDIDATES)[0].headway_min == 5.25
 
 
 def test_full_package_patches_in_canonical_order():
     assert compile_package(["A", "C", "D"], CATALOG, DEFAULT, CANDIDATES) == (
-        RoutingPatch("set_service_headway", "SG_R2", 6.375),
-        RoutingPatch("activate_service", "SVC_SHUTTLE"),
-        RoutingPatch("activate_link", "L_D"),
+        RoutingPatch(kind="set_service_headway", target_id="SG_R2", headway_min=6.375),
+        RoutingPatch(kind="activate_service", target_id="SVC_SHUTTLE"),
+        RoutingPatch(kind="activate_link", target_id="L_D"),
     )
 
 
@@ -94,17 +91,17 @@ def test_stress_headway_factor_applied_once(tmp_path):
     assert compile_package(["A"], CATALOG, scenario, CANDIDATES)[0].headway_min == 5.1
     p = make_problem_for(problem(tmp_path), CANDIDATES, CATALOG)(scenario)
     request = build_request(p, ("A",))
-    assert request.patches == (RoutingPatch("set_service_headway", "SG_R2", 5.1),)
+    assert request.patches == (RoutingPatch(kind="set_service_headway", target_id="SG_R2", headway_min=5.1),)
     assert request.speed_factor == 2 / 3 and request.headway_factor_by_group == {"SG_R2": 0.8}
     assert request.state == "mitigated" and build_request(p, ()).state == "disrupted"
 
 
 def test_baseline_parking_produces_no_patch():
-    cat = catalog({"P_OLD": Parking("P_OLD", "fixture", True), "P_NEW": Parking("P_NEW", "fixture", False)})
+    cat = catalog({"P_OLD": kit_parking("P_OLD", True), "P_NEW": kit_parking("P_NEW", False)})
     candidates = CANDIDATES | {"E": Candidate("E", "link_bundle", link_ids=("L_D",), parking_ids=("P_OLD", "P_NEW"))}
     assert compile_package(["E"], cat, DEFAULT, candidates) == (
-        RoutingPatch("activate_link", "L_D"),
-        RoutingPatch("enable_parking", "P_NEW"),
+        RoutingPatch(kind="activate_link", target_id="L_D"),
+        RoutingPatch(kind="enable_parking", target_id="P_NEW"),
     )
 
 
@@ -120,11 +117,11 @@ def test_compile_rejects_bad_targets():
 
 def test_patch_shape_rules():
     with pytest.raises(ValueError):
-        RoutingPatch("set_service_headway", "SG_R2")          # needs a headway
+        RoutingPatch(kind="set_service_headway", target_id="SG_R2")          # needs a headway
     with pytest.raises(ValueError):
-        RoutingPatch("activate_link", "L_D", 5.0)              # headway only for headway patches
+        RoutingPatch(kind="activate_link", target_id="L_D", headway_min=5.0)              # headway only for headway patches
     with pytest.raises(ValueError):
-        RoutingPatch("teleport", "X")
+        RoutingPatch(kind="teleport", target_id="X")
 
 
 # --- validate_package ---

@@ -11,9 +11,6 @@ from citypilot.decision_engine import (
     Candidate,
     DecisionProblem,
     Limits,
-    Link,
-    ModelCatalog,
-    Parking,
     ResourceResult,
     Scenario,
     StressGrid,
@@ -30,7 +27,8 @@ from citypilot.decision_engine import (
     stress_test,
 )
 
-from decision_testkit import FIXTURE_HASHES, fixture_context, service as kit_service, write_objective
+from decision_testkit import (FIXTURE_HASHES, catalog as kit_catalog, fixture_context, link, parking,
+                             service as kit_service, write_objective)
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "decision"
@@ -49,11 +47,11 @@ def service(sid, v):
 
 def stress_catalog(fx):
     cat = fx["catalog"]
-    return ModelCatalog(
+    return kit_catalog(
         service_groups={k: service(k, v) for k, v in cat["service_groups"].items()},
         prebuilt_services={k: service(k, v) for k, v in cat["prebuilt_services"].items()},
-        links={k: Link(k, v["kind"], v["length_m"], v["requires_construction"], "fixture") for k, v in cat["links"].items()},
-        parking={k: Parking(k, "fixture", v.get("baseline_enabled", False)) for k, v in cat["parking"].items()},
+        links={k: link(k, v["kind"], v["length_m"], v["requires_construction"]) for k, v in cat["links"].items()},
+        parking={k: parking(k, v.get("baseline_enabled", False)) for k, v in cat["parking"].items()},
     )
 
 

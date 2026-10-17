@@ -9,8 +9,6 @@ from citypilot.decision_engine import (
     Candidate,
     DecisionProblem,
     Limits,
-    Link,
-    ModelCatalog,
     ObjectiveModelMismatch,
     ResourceResult,
     Scenario,
@@ -27,7 +25,8 @@ from citypilot.decision_engine import (
     rank_key,
 )
 
-from decision_testkit import FIXTURE_HASHES, fixture_context, make_evaluation, make_request, service, write_objective
+from decision_testkit import (FIXTURE_HASHES, catalog as kit_catalog, fixture_context, h, link, make_evaluation,
+                             make_request, service, write_objective)
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = load_fixture(ROOT / "tests" / "fixtures" / "decision" / "fixture_4action.json")
@@ -214,7 +213,7 @@ def test_gate_decision_file(tmp_path):
     assert saved["total_OD"] == 4
     assert saved["lost_T"] == {"40": 1, "45": 2, "50": 1}
     assert saved["share_T"] == {"40": 0.25, "45": 0.5, "50": 0.25}
-    assert saved["input_hashes"] == {"normal": "n", "disrupted": "d"}
+    assert saved["input_hashes"] == {"normal": h("n"), "disrupted": h("d")}
     assert {"thresholds", "timestamp"} <= saved.keys()
     with pytest.raises(FileExistsError):
         gate_decision(evaluation([30], "n", "normal"), evaluation([50], "d", "disrupted"), tmp_path)
@@ -308,10 +307,10 @@ def test_greedy_skips_l_when_l_plus_p_does_not_fit(tmp_path):
 def test_catalog_resources_wrapper(tmp_path):
     svc = service
 
-    catalog = ModelCatalog(
+    catalog = kit_catalog(
         service_groups={"SG_R2": svc("SG_R2", 10, 12, 15, 30, 20, 5)},
         prebuilt_services={"SVC_SHUTTLE": svc("SVC_SHUTTLE", 8, 9, 18, 6, 30, 4)},
-        links={"L2": Link("L2", "bike", 1200, True, "fixture")},
+        links={"L2": link("L2", "bike", 1200, True)},
         parking={},
     )
     candidates = {
@@ -345,14 +344,14 @@ def test_gate_per_profile_writes_separate_files(tmp_path):
     assert b["objective"] == "sum" and b["lost_T"] == {"40": 0, "45": 0, "50": 0} and b["profile"] == "B"
     assert json.loads((tmp_path / "objective_decision_P.json").read_text())["objective"] == "count"
     assert json.loads((tmp_path / "objective_decision_B.json").read_text())["objective"] == "sum"
-    assert load_objective(tmp_path, "P", {"normal": "normal-P", "disrupted": "disrupted-P"}) == "count"
-    assert load_objective(tmp_path, "B", {"normal": "normal-B", "disrupted": "disrupted-B"}) == "sum"
+    assert load_objective(tmp_path, "P", {"normal": h("normal-P"), "disrupted": h("disrupted-P")}) == "count"
+    assert load_objective(tmp_path, "B", {"normal": h("normal-B"), "disrupted": h("disrupted-B")}) == "sum"
 
 
 def test_objective_for_another_model_is_rejected(tmp_path):
     gate_decision(*gate_inputs(1148, 2718, "P"), tmp_path)
     with pytest.raises(ObjectiveModelMismatch, match="objective decided for another model"):
-        load_objective(tmp_path, "P", {"normal": "normal-P", "disrupted": "a-newer-model"})
+        load_objective(tmp_path, "P", {"normal": h("normal-P"), "disrupted": h("a-newer-model")})
     problem = problem_from(FIXTURE, tmp_path)  # fixture model hashes differ from the committed ones
     with pytest.raises(ObjectiveModelMismatch, match="objective decided for another model"):
         optimize(problem, make_fixture_evaluator(FIXTURE))
