@@ -1,0 +1,2 @@
+# Hash-bound synthetic activation payload: preserve exact bytes on checkout.
+tests/fixtures/prebuilt_services/assets.json -text

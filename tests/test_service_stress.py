@@ -13,7 +13,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from citypilot import routing_engine as engine
-from citypilot.contracts import ContractError,RoutingPatch,RoutingRequest,EvaluationResult,JourneyResult
+from citypilot.contracts import ContractError,StressFactorsNotSupported,RoutingPatch,RoutingRequest,EvaluationResult,JourneyResult
 BUNDLE=Path(os.environ['CITYPILOT_TEST_BUNDLE']) if os.environ.get('CITYPILOT_TEST_BUNDLE') else None
 
 
@@ -140,10 +140,12 @@ class ServiceStressTests(unittest.TestCase):
         q=self.request('mitigated')
         with self.assertRaisesRegex(ContractError,'Unknown existing'):
             engine.evaluate_package(self.model,replace(q,patches=(RoutingPatch(kind='set_service_headway',target_id='SVC_M2_A',headway_min=7.2),)))
-        for kind in ('activate_service','activate_link','enable_parking'):
+        for kind in ('activate_link','enable_parking'):
             bad=self.request('mitigated','B',patches=(RoutingPatch(kind=kind,target_id='future:asset'),))
-            with self.subTest(kind=kind),self.assertRaisesRegex(ContractError,'phase 1 unsupported patch'):
+            with self.subTest(kind=kind),self.assertRaisesRegex(StressFactorsNotSupported,'phase 2 unsupported patch'):
                 engine.evaluate_package(self.model,bad)
+        with self.assertRaisesRegex(ContractError,'Unknown prebuilt service'):
+            engine.evaluate_package(self.model,replace(q,patches=(RoutingPatch(kind='activate_service',target_id='future:asset'),)))
         with self.assertRaisesRegex(ContractError,'Conflicting'):
             replace(q,patches=(RoutingPatch(kind='set_service_headway',target_id='SG_R2',headway_min=7.2),
                                RoutingPatch(kind='set_service_headway',target_id='SG_R2',headway_min=8)))
