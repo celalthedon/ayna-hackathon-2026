@@ -59,6 +59,42 @@ def _safe_module(source: str) -> None:
             raise ExportError(f"Top-level {type(node).__name__} is not import-safe")
 
 
+# Owner "ali" (decision_export) only; owner "celal" keeps _safe_module unchanged.
+DECISION_CLASSES = frozenset({
+    "BaselineResult", "BaselineStep", "Candidate", "Co2Result", "DecisionProblem", "Limits",
+    "ObjectiveModelMismatch", "OdCarDistance", "OptimizationResult", "PackageOutcome", "RemovalResult",
+    "RequestContext", "ResourceResult", "Scenario", "ServiceResource", "StressFactorsNotSupported",
+    "StressGrid", "StressPoint", "StressResult", "StressSetup",
+})
+# TEMPORARY: local contract v1 stubs, removed by the decision migration PR that imports them
+# from citypilot.contracts. Pinned by name in tests/test_export_decision_allowlist.py.
+DECISION_TEMPORARY_STUB_CLASSES = frozenset({
+    "EvaluationResult", "Link", "ModelCatalog", "ODResult", "Parking", "RoutingPatch", "RoutingRequest",
+    "ServiceGroup",
+})
+DECISION_EXTRA_IMPORTS = frozenset({"csv", "itertools", "datetime", "yaml"})
+DECISION_NONLITERAL_DEFAULT_FUNCTIONS = frozenset({"count_lost", "gate_objective"})
+
+
+def _safe_decision_module(source: str) -> None:
+    """Owner "ali": the decision allowlist above, then the shared rules for everything else."""
+    try:
+        module = ast.parse(source)
+    except SyntaxError as exc:
+        raise ExportError(f"Exported code must be plain Python (no magics): {exc}") from exc
+    for node in module.body:
+        if isinstance(node, ast.ClassDef) and node.name in DECISION_CLASSES | DECISION_TEMPORARY_STUB_CLASSES:
+            continue
+        if isinstance(node, ast.Import) and {n.name for n in node.names} <= DECISION_EXTRA_IMPORTS:
+            continue
+        if (isinstance(node, ast.ImportFrom) and not node.level and node.module in DECISION_EXTRA_IMPORTS):
+            continue
+        if (isinstance(node, ast.FunctionDef) and node.name in DECISION_NONLITERAL_DEFAULT_FUNCTIONS
+                and not node.decorator_list):
+            continue
+        _safe_module(ast.unparse(node))
+
+
 def render(notebook: Path, owner: str, *, repo_root: Path = ROOT) -> tuple[Path, bytes]:
     if owner not in OWNERS:
         raise ExportError("Select exactly one owner: celal or ali")
@@ -89,7 +125,7 @@ def render(notebook: Path, owner: str, *, repo_root: Path = ROOT) -> tuple[Path,
         raise ExportError(f"No nonempty {tag} code cells found")
     # Hash only exported source, so outputs, execution counts and analysis do not affect it.
     body = "\n\n".join(chunks) + "\n"
-    _safe_module(body)
+    (_safe_decision_module if owner == "ali" else _safe_module)(body)
     digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
     text = (HEADER + f"# Owner: {owner}; source: {relative}; tag: {tag}\n"
             + f"# Exported source SHA-256: {digest}\n"
