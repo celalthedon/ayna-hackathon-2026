@@ -10,10 +10,10 @@
     "C_min": 120
   },
   "actions": {
-    "A": {"bus_hours": 6, "new_infra_km": 0},
-    "B": {"bus_hours": 15, "new_infra_km": 0},
-    "C": {"bus_hours": 15, "new_infra_km": 0},
-    "D": {"bus_hours": 0, "new_infra_km": 0.04}
+    "A": {"bus_hours": 6, "new_infra_km": 0, "distance_m": 31},
+    "B": {"bus_hours": 15, "new_infra_km": 0, "distance_m": 31},
+    "C": {"bus_hours": 15, "new_infra_km": 0, "distance_m": 0},
+    "D": {"bus_hours": 0, "new_infra_km": 0.04, "distance_m": 40}
   },
   "exclusions": [["A", "B"]],
   "ods": [

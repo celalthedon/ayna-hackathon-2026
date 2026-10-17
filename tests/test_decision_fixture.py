@@ -76,20 +76,20 @@ FEASIBLE = ["", "A", "B", "C", "D", "AC", "AD", "BD", "CD", "ACD"]
 
 
 def test_ranking_of_feasible_packages():
-    ranked = sorted(FEASIBLE, key=lambda p: rank_key(EVALUATE(request(p)), fixture_resources(p)))
+    ranked = sorted(FEASIBLE, key=lambda p: rank_key(EVALUATE(request(p)), fixture_resources(p), objective="count"))
     assert ranked == ["ACD", "AC", "CD", "B", "BD", "C", "A", "AD", "", "D"]
     assert list(ranked[0]) == FIXTURE["expected_search"]["exact"]["package"]
 
 
 def test_capped_sum_beats_bus_hours():
-    ac = rank_key(EVALUATE(request("AC")), fixture_resources("AC"))
-    cd = rank_key(EVALUATE(request("CD")), fixture_resources("CD"))
+    ac = rank_key(EVALUATE(request("AC")), fixture_resources("AC"), objective="count")
+    cd = rank_key(EVALUATE(request("CD")), fixture_resources("CD"), objective="count")
     assert fixture_resources("CD").added_bus_hours < fixture_resources("AC").added_bus_hours
     assert ac < cd
 
 
 def test_km_breaks_tie():
-    assert rank_key(EVALUATE(request("B")), fixture_resources("B")) < rank_key(EVALUATE(request("BD")), fixture_resources("BD"))
+    assert rank_key(EVALUATE(request("B")), fixture_resources("B"), objective="count") < rank_key(EVALUATE(request("BD")), fixture_resources("BD"), objective="count")
 
 
 def synthetic_result(ids):
@@ -97,17 +97,17 @@ def synthetic_result(ids):
 
 
 def test_rank_fewer_bus_hours_wins():
-    cheap = rank_key(synthetic_result("X"), ResourceResult(6, 6, 0, 1, "known", (), ()))
-    costly = rank_key(synthetic_result("Y"), ResourceResult(9, 9, 0, 1, "known", (), ()))
+    cheap = rank_key(synthetic_result("X"), ResourceResult(6, 6, 0, 1, "known", (), ()), objective="count")
+    costly = rank_key(synthetic_result("Y"), ResourceResult(9, 9, 0, 1, "known", (), ()), objective="count")
     assert cheap < costly
 
 
 def test_rank_fewer_actions_wins():
-    one = rank_key(synthetic_result("Z"), ResourceResult(6, 6, 0.5, 1, "known", (), ()))
-    two = rank_key(synthetic_result("XY"), ResourceResult(6, 6, 0.5, 2, "known", (), ()))
+    one = rank_key(synthetic_result("Z"), ResourceResult(6, 6, 0.5, 1, "known", (), ()), objective="count")
+    two = rank_key(synthetic_result("XY"), ResourceResult(6, 6, 0.5, 2, "known", (), ()), objective="count")
     assert one < two
 
 
 def test_rank_unknown_bus_hours_fails():
     with pytest.raises(ValueError):
-        rank_key(synthetic_result("X"), ResourceResult(None, 3, 0, 1, "unknown", (), ()))
+        rank_key(synthetic_result("X"), ResourceResult(None, 3, 0, 1, "unknown", (), ()), objective="count")
