@@ -1,0 +1,5 @@
+# Resource limits for the decision layer. Fixed before optimisation.
+H_hours: 3.0          # analysis period in hours; added bus-hours = vehicle delta x H
+B_h_bus_hours: 30.0   # maximum added bus-hours one package may use
+K_new_infra_km: 2.0   # maximum km of new walk/bike links that require construction
+N_a_actions: 3        # maximum number of selected actions (catalog entries) in one package
