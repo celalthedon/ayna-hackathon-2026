@@ -129,9 +129,8 @@ class RealBundleTests(unittest.TestCase):
 
     def test_unsupported_requests_and_threshold_cap_identity(self):
         request=engine.baseline_request(self.model)
-        for other in (replace(request,state='mitigated',closure_id=self.model['closure_id']),
-                      replace(request,state='mitigated',closure_id=self.model['closure_id'],patches=(RoutingPatch(kind='activate_link',target_id='x'),)),
-                      replace(request,speed_factor=0.9),replace(request,headway_factor_by_group={'SG_R2':1.2}),
+        for other in (replace(request,state='mitigated',closure_id=self.model['closure_id'],patches=(RoutingPatch(kind='activate_link',target_id='x'),)),
+                      replace(request,headway_factor_by_group={'SG_R2':1.2}),
                       replace(request,od_set_id='wrong'),replace(request,model_version='wrong'),
                       replace(request,state='disrupted',closure_id='unregistered')):
             with self.subTest(other=other),self.assertRaises(ContractError):engine.evaluate_package(self.model,other)

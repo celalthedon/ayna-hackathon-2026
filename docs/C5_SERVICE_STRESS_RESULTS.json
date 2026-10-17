@@ -1,0 +1,318 @@
+{
+  "phase": "C5 phase 1",
+  "base_commit": "1f115812b69b52bfe3c85e30459ef3650036f062",
+  "interpreter": "C:\\Users\\celal\\OneDrive\\Desktop\\ayna-hackathon-2026\\ayna-hackathon-2026\\notebooks\\citypilot-env\\Scripts\\python.exe",
+  "bundle_hash": "9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066",
+  "od_hash": "10c1b58f1d704cec25b11936da32c2c09bc995323e8a4083fd0bd46f50286ac8",
+  "manifest_files_verified": 49,
+  "load_duration_ms": 1651.6200000041863,
+  "runtime_note": "First evaluation of each physical scenario in this process; includes graph derivation, shortest paths and result construction up to duration capture. Journey reuses the evaluation scenario. Hardware-specific timings.",
+  "scenarios": [
+    {
+      "label": "P_normal_R2_9min",
+      "request": {
+        "model_version": "c4-alpha-1@9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066",
+        "od_set_id": "fixed_od_v1@10c1b58f1d704cec25b11936da32c2c09bc995323e8a4083fd0bd46f50286ac8",
+        "contract_version": "1.0",
+        "state": "normal",
+        "profile": "P",
+        "closure_id": null,
+        "patches": [],
+        "speed_factor": 1.0,
+        "headway_factor_by_group": {
+          "SG_R2": 1.2,
+          "SG_R14": 1.0
+        },
+        "thresholds_min": [
+          40,
+          45,
+          50
+        ],
+        "primary_t_min": 45,
+        "cap_min": 120.0,
+        "candidate_ids": []
+      },
+      "config_hash": "92ed2bc99a007aac3f510301e55b5775efe9bfb48bb55c6fc495e4dfeff0f0f0",
+      "od_pairs": 2718,
+      "within_counts": {
+        "40": 2049,
+        "45": 2338,
+        "50": 2496
+      },
+      "capped_time_sum": 94498.07626603205,
+      "evaluate_duration_ms": 1674.9847999963094,
+      "effective_headways_min": {
+        "SG_R14": 5.0,
+        "SG_R2": 9.0
+      },
+      "r2_board_wait_min": 4.5,
+      "journey": {
+        "origin_id": "origin:terminal:baku_international",
+        "destination_id": "destination:metro_exit:44",
+        "minutes": 35.66077163959099,
+        "leg_sum_min": 35.660771639591,
+        "legs": 38,
+        "duration_ms": 260.84410000476055,
+        "geometry_type": "MultiLineString",
+        "gap_count": 7
+      }
+    },
+    {
+      "label": "P_mitigated_R2_7_2min",
+      "request": {
+        "model_version": "c4-alpha-1@9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066",
+        "od_set_id": "fixed_od_v1@10c1b58f1d704cec25b11936da32c2c09bc995323e8a4083fd0bd46f50286ac8",
+        "contract_version": "1.0",
+        "state": "mitigated",
+        "profile": "P",
+        "closure_id": "metro_link:green:670216816:5188836356",
+        "patches": [
+          {
+            "kind": "set_service_headway",
+            "target_id": "SG_R2",
+            "headway_min": 7.2
+          }
+        ],
+        "speed_factor": 1.0,
+        "headway_factor_by_group": {
+          "SG_R2": 1.2,
+          "SG_R14": 1.0
+        },
+        "thresholds_min": [
+          40,
+          45,
+          50
+        ],
+        "primary_t_min": 45,
+        "cap_min": 120.0,
+        "candidate_ids": []
+      },
+      "config_hash": "2b60267d19125e63502dfe5bbc461b6504ce4cb99be6152ea302ff2b9d2a7fc9",
+      "od_pairs": 2718,
+      "within_counts": {
+        "40": 643,
+        "45": 1197,
+        "50": 1712
+      },
+      "capped_time_sum": 128391.40918743135,
+      "evaluate_duration_ms": 2692.542200005846,
+      "effective_headways_min": {
+        "SG_R14": 5.0,
+        "SG_R2": 7.2
+      },
+      "r2_board_wait_min": 3.6,
+      "journey": {
+        "origin_id": "origin:terminal:baku_international",
+        "destination_id": "destination:metro_exit:44",
+        "minutes": 39.0131234631103,
+        "leg_sum_min": 39.013123463110304,
+        "legs": 70,
+        "duration_ms": 153.33169999939855,
+        "geometry_type": "MultiLineString",
+        "gap_count": 32
+      }
+    },
+    {
+      "label": "P_disrupted_slow_bus",
+      "request": {
+        "model_version": "c4-alpha-1@9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066",
+        "od_set_id": "fixed_od_v1@10c1b58f1d704cec25b11936da32c2c09bc995323e8a4083fd0bd46f50286ac8",
+        "contract_version": "1.0",
+        "state": "disrupted",
+        "profile": "P",
+        "closure_id": "metro_link:green:670216816:5188836356",
+        "patches": [],
+        "speed_factor": 0.8,
+        "headway_factor_by_group": {
+          "SG_R2": 1.2,
+          "SG_R14": 1.1
+        },
+        "thresholds_min": [
+          40,
+          45,
+          50
+        ],
+        "primary_t_min": 45,
+        "cap_min": 120.0,
+        "candidate_ids": []
+      },
+      "config_hash": "633974d97fbe900a4e36d2b26184a334989d6544bb9eda9e395092666859d9d6",
+      "od_pairs": 2718,
+      "within_counts": {
+        "40": 522,
+        "45": 932,
+        "50": 1413
+      },
+      "capped_time_sum": 134477.69167552984,
+      "evaluate_duration_ms": 2651.636499998858,
+      "effective_headways_min": {
+        "SG_R14": 5.5,
+        "SG_R2": 9.0
+      },
+      "r2_board_wait_min": 4.5,
+      "journey": {
+        "origin_id": "origin:terminal:baku_international",
+        "destination_id": "destination:metro_exit:44",
+        "minutes": 45.17490074173089,
+        "leg_sum_min": 45.17490074173089,
+        "legs": 70,
+        "duration_ms": 123.68179999612039,
+        "geometry_type": "MultiLineString",
+        "gap_count": 32
+      }
+    },
+    {
+      "label": "P_mitigated_slow_bus_R2_patch",
+      "request": {
+        "model_version": "c4-alpha-1@9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066",
+        "od_set_id": "fixed_od_v1@10c1b58f1d704cec25b11936da32c2c09bc995323e8a4083fd0bd46f50286ac8",
+        "contract_version": "1.0",
+        "state": "mitigated",
+        "profile": "P",
+        "closure_id": "metro_link:green:670216816:5188836356",
+        "patches": [
+          {
+            "kind": "set_service_headway",
+            "target_id": "SG_R2",
+            "headway_min": 7.2
+          }
+        ],
+        "speed_factor": 0.8,
+        "headway_factor_by_group": {
+          "SG_R2": 1.2,
+          "SG_R14": 1.1
+        },
+        "thresholds_min": [
+          40,
+          45,
+          50
+        ],
+        "primary_t_min": 45,
+        "cap_min": 120.0,
+        "candidate_ids": []
+      },
+      "config_hash": "d6668a0223d2ab2b33597e538362127d4c2f4d3fb3c01b08a401f2be31935044",
+      "od_pairs": 2718,
+      "within_counts": {
+        "40": 541,
+        "45": 955,
+        "50": 1468
+      },
+      "capped_time_sum": 133533.43299145563,
+      "evaluate_duration_ms": 2688.1434000024456,
+      "effective_headways_min": {
+        "SG_R14": 5.5,
+        "SG_R2": 7.2
+      },
+      "r2_board_wait_min": 3.6,
+      "journey": {
+        "origin_id": "origin:terminal:baku_international",
+        "destination_id": "destination:metro_exit:44",
+        "minutes": 44.27490074173089,
+        "leg_sum_min": 44.27490074173089,
+        "legs": 70,
+        "duration_ms": 125.88110000069719,
+        "geometry_type": "MultiLineString",
+        "gap_count": 32
+      }
+    },
+    {
+      "label": "B_mitigated_slow_bus_R2_patch",
+      "request": {
+        "model_version": "c4-alpha-1@9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066",
+        "od_set_id": "fixed_od_v1@10c1b58f1d704cec25b11936da32c2c09bc995323e8a4083fd0bd46f50286ac8",
+        "contract_version": "1.0",
+        "state": "mitigated",
+        "profile": "B",
+        "closure_id": "metro_link:green:670216816:5188836356",
+        "patches": [
+          {
+            "kind": "set_service_headway",
+            "target_id": "SG_R2",
+            "headway_min": 7.2
+          }
+        ],
+        "speed_factor": 0.8,
+        "headway_factor_by_group": {
+          "SG_R2": 1.2,
+          "SG_R14": 1.1
+        },
+        "thresholds_min": [
+          40,
+          45,
+          50
+        ],
+        "primary_t_min": 45,
+        "cap_min": 120.0,
+        "candidate_ids": []
+      },
+      "config_hash": "a63b611c5d3b6a73e04c300621b90b66923105e2e33f9c04046247c3283a4207",
+      "od_pairs": 2718,
+      "within_counts": {
+        "40": 2406,
+        "45": 2506,
+        "50": 2511
+      },
+      "capped_time_sum": 74039.0312696655,
+      "evaluate_duration_ms": 4105.679799999052,
+      "effective_headways_min": {
+        "SG_R14": 5.5,
+        "SG_R2": 7.2
+      },
+      "r2_board_wait_min": 3.6,
+      "journey": {
+        "origin_id": "origin:terminal:baku_international",
+        "destination_id": "destination:metro_exit:44",
+        "minutes": 43.780378907470975,
+        "leg_sum_min": 43.78037890747099,
+        "legs": 294,
+        "duration_ms": 441.41259999742033,
+        "geometry_type": "LineString",
+        "gap_count": 0
+      }
+    }
+  ],
+  "checks": {
+    "tests_passed": 38,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "pattern": "test_service_stress.py",
+        "tests": 11,
+        "seconds": 65.015
+      },
+      {
+        "pattern": "test_routing.py",
+        "tests": 9,
+        "seconds": 0.362
+      },
+      {
+        "pattern": "test_export.py",
+        "tests": 9,
+        "seconds": 0.428
+      },
+      {
+        "pattern": "test_baseline_adapters.py",
+        "tests": 9,
+        "seconds": 61.691
+      }
+    ],
+    "exporter_check": "passed",
+    "baseline_rows_unchanged": 10872,
+    "numerical_tolerance_min": 1e-06,
+    "empty_mitigated_equals_disrupted_under_same_factors": true,
+    "whole_notebook_clean_run": "not run; raw-data reproducibility remains pending",
+    "ali_consumer_suite": "not run; not modified"
+  },
+  "preservation": {
+    "tracked_files_outside_celal_scope_unchanged": true,
+    "non_export_notebook_cells_preserved": 67,
+    "original_dirty_checkout_files_and_index_preserved": true,
+    "c4_pr_worktree_unchanged": true,
+    "recovery_history_and_protected_inputs_hashes_match": true,
+    "notebook_backup_absolute_path": "C:\\Users\\celal\\OneDrive\\Belgeler\\ChatGPT\\AYNA\\c5_service_stress_work\\backup_20261017T170444Z\\notebooks\\01_network_routing.ipynb",
+    "commit_push_merge_performed": false
+  }
+}
