@@ -11,7 +11,8 @@ Updated: 2026-10-18, final presentation and publication handoff. The user report
 - User's running server was not restarted, stopped or replaced. Refresh the browser for static presentation changes; the explicit response-header change takes effect on the next ordinary app restart.
 - Fetch attempted once in this finalization: Git cannot obtain credentials (`wincredman` / missing TTY); `gh auth status` reports the token invalid. GitHub connector also reports repository inaccessible (404). Latest remote main cannot be verified. Cached `origin/main` is still `14bec5cc61524ea23bbf68f0698eea14cece4d61`.
 - Compared with that inspected main: Ali's decision modules/panels, routing engine/contracts, M supplement assets, gates/configuration, notebooks and `requirements.txt` dependency pins are unchanged. A prospective check against newer remote changes remains blocked by authentication. No main checkout or other worktree was changed.
-- Local commit/push/PR outcome is recorded below after the publication attempt. PR description is prepared in `docs/UI_INTEGRATION_PR.md`.
+- Integration commit created: `8a5093b5a2a5a849a1aa77e698946792649a1f23` (`Integrate approved CITYPILOT UI with fixed-OD routing and journey playback`). Audited 29 intended files; no original model outputs, environments, backups or unrelated changes included. A subsequent documentation-only commit records this handoff.
+- Actual push attempted once: `git push -u origin HEAD:refs/heads/codex/citypilot-ui-integration`. It failed before publication because Git cannot obtain GitHub credentials (`wincredman`, missing `/dev/tty`, `could not read Username`). No retries with unchanged authentication. **No PR was opened and no PR URL exists.** The connector cannot access this repository either, and a PR cannot reference an unpublished head. PR description is prepared in `docs/UI_INTEGRATION_PR.md`.
 
 - Worktree: `C:\Users\celal\OneDrive\Desktop\ayna-hackathon-2026\citypilot-ui-integration`
 - Branch: `codex/citypilot-ui-integration`
@@ -129,3 +130,15 @@ Known baseline counts from unchanged engine parity evidence (not newly executed 
 ## Next concrete action
 
 After publication authentication is available, fetch current main and inspect the prospective integration against it without changing Ali's files/assets/pins, then push the saved dedicated branch and open the prepared PR. Run focused Python tests from a session with access to the existing interpreter. Preserve the user's running server; do not start a second instance. Remaining manual checks can use the existing server after a normal browser refresh. Real decision backend/A6/cache/precompute integration remains separate. Do not repeat completed Node checks without relevant changes.
+
+Publication commands after credentials are restored (run from this worktree; do not merge or deploy):
+
+```powershell
+git fetch origin main
+git diff --name-status origin/main...HEAD
+# Inspect newer main and any API composition overlap before publishing.
+git push -u origin HEAD:refs/heads/codex/citypilot-ui-integration
+gh pr create --repo celalthedon/ayna-hackathon-2026 --base main --head codex/citypilot-ui-integration --title 'Integrate approved CITYPILOT UI with real routing and journey simulation' --body-file docs/UI_INTEGRATION_PR.md
+```
+
+No merge/deployment performed. Remote freshness, successful branch publication/PR creation, focused Python execution, final browser presentation inspection and real decision integration remain distinct pending items.
