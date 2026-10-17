@@ -1,0 +1,34 @@
+{
+  "label": "synthetic test fixture, not a city result",
+  "status": "fixture",
+  "limits": {
+    "B_h_bus_hours": 24,
+    "N_a_actions": 3,
+    "K_new_infra_km": 2.0,
+    "T_min": 45,
+    "T_sensitivity_min": [40, 50],
+    "C_min": 120
+  },
+  "actions": {
+    "A": {"bus_hours": 6, "new_infra_km": 0},
+    "B": {"bus_hours": 15, "new_infra_km": 0},
+    "C": {"bus_hours": 15, "new_infra_km": 0},
+    "D": {"bus_hours": 0, "new_infra_km": 0.04}
+  },
+  "exclusions": [["A", "B"]],
+  "ods": [
+    {"od_id": "OD1", "disrupted_min": 60, "options": [{"requires": ["A"], "minutes": 40}, {"requires": ["B"], "minutes": 38}]},
+    {"od_id": "OD2", "disrupted_min": 62, "options": [{"requires": ["A"], "minutes": 42}, {"requires": ["B"], "minutes": 40}]},
+    {"od_id": "OD3", "disrupted_min": 55, "options": [{"requires": ["B"], "minutes": 44}]},
+    {"od_id": "OD4", "disrupted_min": 58, "options": [{"requires": ["B"], "minutes": 43}, {"requires": ["C"], "minutes": 41}]},
+    {"od_id": "OD5", "disrupted_min": null, "options": [{"requires": ["C"], "minutes": 39}]},
+    {"od_id": "OD6", "disrupted_min": 50, "options": [{"requires": ["C"], "minutes": 44}]},
+    {"od_id": "OD7", "disrupted_min": 50, "options": [{"requires": ["C"], "minutes": 48}, {"requires": ["C", "D"], "minutes": 44}]},
+    {"od_id": "OD8", "disrupted_min": 52, "options": [{"requires": ["C"], "minutes": 49}, {"requires": ["C", "D"], "minutes": 45}]}
+  ],
+  "expected_search": {
+    "exact": {"package": ["A", "C", "D"], "n_T": 7},
+    "greedy": {"package": ["B"], "n_T": 4},
+    "unconstrained_best": {"package": ["B", "C", "D"], "n_T": 8, "feasible": false, "bus_hours": 30}
+  }
+}
