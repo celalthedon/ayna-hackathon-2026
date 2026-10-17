@@ -20,18 +20,24 @@ from citypilot.decision_engine import (
     Limits,
     ModelCatalog,
     ODResult,
+    ObjectiveModelMismatch,
+    OdCarDistance,
     OptimizationResult,
     PackageOutcome,
+    RequestContext,
     ResourceResult,
+    RoutingPatch,
     RoutingRequest,
     Scenario,
     StressGrid,
     StressSetup,
+    build_request,
     co2_for_package,
     enumerate_packages,
-    mean_car_distance_km,
     is_feasible,
     load_objective,
+    mean_car_distance_km,
+    no_patches,
     optimize,
     rank_key,
     remove_action,
@@ -41,6 +47,7 @@ from citypilot.decision_engine import (
 PROFILES = ("P", "B")
 MAX_ACTIONS = 4
 OBJECTIVE_NOT_COMMITTED = "objective not committed"
+OBJECTIVE_OTHER_MODEL = "objective decided for another model"
 
 
 @dataclass(frozen=True)
@@ -65,7 +72,11 @@ class DecisionBackend:
     thresholds_min: tuple[int, ...]
     primary_t_min: int
     cap_min: float
-    objective_path: Path
+    objective_dir: Path  # objective_decision_<profile>.json per profile
+    model_hashes: Mapping[str, str]  # current normal / disrupted config_hash
+    model_version: str
+    od_set_id: str
+    closure_id: str
     H_hours: float
     resources_for: Callable[[Scenario], Callable[[tuple[str, ...]], ResourceResult]]
     evaluator_for: Callable[[str, Scenario], Callable[[RoutingRequest], EvaluationResult]]  # (profile, scenario)
@@ -73,7 +84,9 @@ class DecisionBackend:
     reference_package_ids: tuple[str, ...] | None = None  # the AYNA real response, from the catalog
     stress_grid: StressGrid | None = None
     co2: Co2Inputs | None = None
-    od_car_distance_km: Mapping[str, float | None] | None = None  # OD table car_distance_km (modelled)
+    od_car_distance_km: Mapping[str, OdCarDistance] | None = None  # OD table car_distance_km
+    patches_for: Callable[[Scenario], Callable[[tuple[str, ...]], tuple[RoutingPatch, ...]]] = lambda scenario: no_patches
+    requires_bike: frozenset[str] = frozenset()
 
 
 # --- request bodies (out of range -> 422) ---
@@ -167,16 +180,19 @@ def _scenario_key(scenario: Scenario) -> dict:
 
 
 def _evaluation_to_dict(e: EvaluationResult) -> dict:
-    return {"config_hash": e.config_hash, "candidate_ids": list(e.candidate_ids),
-            "od_results": [[o.od_id, o.minutes, o.status] for o in e.od_results],
-            "within_counts": {str(t): n for t, n in e.within_counts.items()},
-            "primary_t_min": e.primary_t_min, "capped_time_sum": e.capped_time_sum}
+    d = {f.name: getattr(e, f.name) for f in fields(e)}
+    d["od_results"] = [[o.od_id, o.status, o.minutes, o.capped_minutes] for o in e.od_results]
+    d["within_counts"] = {str(t): n for t, n in e.within_counts.items()}
+    d["warnings"] = list(e.warnings)
+    return d
 
 
 def _evaluation_from_dict(d: dict) -> EvaluationResult:
-    return EvaluationResult(d["config_hash"], tuple(d["candidate_ids"]),
-                            tuple(ODResult(*o) for o in d["od_results"]),
-                            {int(t): n for t, n in d["within_counts"].items()}, d["primary_t_min"], d["capped_time_sum"])
+    return EvaluationResult(**(d | {
+        "od_results": tuple(ODResult(*o) for o in d["od_results"]),
+        "within_counts": {int(t): n for t, n in d["within_counts"].items()},
+        "warnings": tuple(d["warnings"]),
+    }))
 
 
 class EvaluationCache:
@@ -227,12 +243,15 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
     def default_scenario() -> Scenario:
         return Scenario(1.0, 1.0, backend.H_hours)
 
-    def problem(scenario: Scenario, limits: Limits) -> DecisionProblem:
+    def problem(scenario: Scenario, limits: Limits, profile: str) -> DecisionProblem:
+        context = RequestContext(backend.model_version, backend.od_set_id, backend.closure_id, profile, scenario,
+                                 backend.patches_for(scenario))
         return DecisionProblem(
             candidate_ids=backend.candidate_ids, exclusions=backend.exclusions, prerequisites=backend.prerequisites,
             distance_m=backend.distance_m, limits=limits, thresholds_min=backend.thresholds_min,
-            primary_t_min=backend.primary_t_min, cap_min=backend.cap_min, objective_path=backend.objective_path,
-            resources=backend.resources_for(scenario),
+            primary_t_min=backend.primary_t_min, cap_min=backend.cap_min, objective_dir=backend.objective_dir,
+            model_hashes=backend.model_hashes, context=context, resources=backend.resources_for(scenario),
+            requires_bike=backend.requires_bike,
         )
 
     def evaluator(profile: str, scenario: Scenario):
@@ -240,18 +259,20 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         so later limit changes only re-filter and re-rank."""
         cache = cache_for(profile, scenario)
         widest = problem(scenario, Limits(backend.limits.B_h_bus_hours, backend.limits.K_new_infra_km, MAX_ACTIONS,
-                                          backend.limits.max_exact_packages))  # enumeration uses N_a only
+                                          backend.limits.max_exact_packages), profile)  # enumeration uses N_a only
         packages = list(enumerate_packages(widest))
         if len(packages) <= backend.limits.max_exact_packages:
             for package in packages:
-                cache.evaluate(RoutingRequest(package, backend.thresholds_min, backend.primary_t_min, backend.cap_min))
+                cache.evaluate(build_request(widest, package))
         return cache.evaluate
 
-    def committed_objective() -> str:
+    def committed_objective(profile: str) -> str:
         try:
-            return load_objective(backend.objective_path)
+            return load_objective(backend.objective_dir, profile, backend.model_hashes)
         except FileNotFoundError:
             raise HTTPException(409, OBJECTIVE_NOT_COMMITTED)
+        except ObjectiveModelMismatch:
+            raise HTTPException(409, OBJECTIVE_OTHER_MODEL)
         except ValueError as e:
             raise HTTPException(409, f"{OBJECTIVE_NOT_COMMITTED}: {e}")
 
@@ -266,22 +287,28 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
 
     def run_optimize(limits: Limits, profile: str) -> OptimizationResult:
         scenario = default_scenario()
-        return optimize(problem(scenario, limits), evaluator(profile, scenario))
+        return optimize(problem(scenario, limits, profile), evaluator(profile, scenario))
 
     def unprocessable(e: Exception) -> HTTPException:
         return HTTPException(422, str(e))
 
     @router.get("/state")
     def state() -> dict:
-        try:
-            objective = {"value": load_objective(backend.objective_path), "status": "committed"}
-        except (FileNotFoundError, ValueError):
-            objective = {"value": None, "status": "not committed"}
+        objective = {}
+        for profile in PROFILES:
+            try:
+                objective[profile] = {"value": load_objective(backend.objective_dir, profile, backend.model_hashes),
+                                      "status": "committed"}
+            except ObjectiveModelMismatch:
+                objective[profile] = {"value": None, "status": OBJECTIVE_OTHER_MODEL}
+            except (FileNotFoundError, ValueError):
+                objective[profile] = {"value": None, "status": "not committed"}
         co2 = backend.co2
         return stamp({
             "limits": jsonable(backend.limits),
             "objective": objective,
             "input_hashes": dict(backend.input_hashes),
+            "model_hashes": dict(backend.model_hashes),
             "profiles": list(PROFILES),
             "thresholds_min": list(backend.thresholds_min),
             "primary_t_min": backend.primary_t_min,
@@ -296,7 +323,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
 
     @router.post("/optimize")
     def post_optimize(body: OptimizeBody) -> dict:
-        committed_objective()
+        committed_objective(body.profile)
         try:
             result = run_optimize(limits_from(body), body.profile)
         except ValueError as e:
@@ -305,26 +332,25 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
 
     @router.post("/compare_ayna")
     def post_compare(body: ProfileBody) -> dict:
-        objective = committed_objective()
+        objective = committed_objective(body.profile)
         reference_ids = backend.reference_package_ids
         if not reference_ids:
             raise HTTPException(409, "no AYNA reference package in the catalog")
         scenario = default_scenario()
         try:
-            reference_problem = problem(scenario, backend.limits)
+            reference_problem = problem(scenario, backend.limits, body.profile)
             reference_resources = reference_problem.resources(tuple(sorted(reference_ids)))
             if reference_resources.added_bus_hours is None:
                 raise ValueError(f"reference package {reference_ids}: bus-hours unknown")
             limits = Limits(reference_resources.added_bus_hours, backend.limits.K_new_infra_km, MAX_ACTIONS,
                             backend.limits.max_exact_packages)
-            result = optimize(problem(scenario, limits), evaluator(body.profile, scenario))
-            ref_eval = evaluator(body.profile, scenario)(RoutingRequest(
-                tuple(sorted(reference_ids)), backend.thresholds_min, backend.primary_t_min, backend.cap_min))
+            result = optimize(problem(scenario, limits, body.profile), evaluator(body.profile, scenario))
+            ref_eval = evaluator(body.profile, scenario)(build_request(reference_problem, reference_ids))
         except ValueError as e:
             raise unprocessable(e)
         rec = result.recommendation
-        ref_key = rank_key(ref_eval, reference_resources, objective)
-        rec_key = rank_key(rec.evaluation, rec.resources, objective)
+        ref_key = rank_key(ref_eval, reference_resources, objective, reference_ids)
+        rec_key = rank_key(rec.evaluation, rec.resources, objective, rec.candidate_ids)
         if not is_feasible(reference_resources, limits):
             verdict = "reference infeasible under these limits"
         elif rec_key[:2] < ref_key[:2]:
@@ -341,15 +367,19 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
 
     @router.post("/stress")
     def post_stress(body: PackageBody) -> dict:
-        committed_objective()
+        committed_objective(body.profile)
         if backend.stress_grid is None:
             raise HTTPException(409, "stress grid not available for this model")
-        setup = StressSetup(lambda sc: problem(sc, backend.limits), lambda sc: evaluator(body.profile, sc),
+        setup = StressSetup(lambda sc: problem(sc, backend.limits, body.profile), lambda sc: evaluator(body.profile, sc),
                             backend.stress_grid, backend.H_hours)
         try:
             r = stress_test(setup, body.package_ids)
         except ValueError as e:
             raise unprocessable(e)
+        if r.status != "ok":
+            return stamp({"status": r.status, "message": r.message, "objective": r.objective,
+                          "package_ids": list(r.package_ids), "points": [], "worst": None, "reoptimization": None,
+                          "reoptimization_reason": "", "warnings": []}, body, "stress")
         points = [{"speed_level": p.speed_level, "headway_level": p.headway_level,
                    "speed_factor": p.scenario.speed_factor,
                    "headway_factors": dict(p.scenario.headway_factor_by_group or {}),
@@ -357,16 +387,17 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
                    "actions": p.actions, "within_t": p.within_t, "capped_time_sum": p.capped_time_sum,
                    "warnings": list(p.warnings)} for p in r.points]
         worst = next(pt for pt, p in zip(points, r.points) if p is r.worst)
-        return stamp({"objective": r.objective, "package_ids": list(r.package_ids), "points": points, "worst": worst,
+        return stamp({"status": r.status, "message": r.message,
+                      "objective": r.objective, "package_ids": list(r.package_ids), "points": points, "worst": worst,
                       "reoptimization": optimization_json(r.reoptimization),
                       "reoptimization_reason": r.reoptimization_reason, "warnings": list(r.warnings)}, body, "stress")
 
     @router.post("/remove")
     def post_remove(body: RemoveBody) -> dict:
-        committed_objective()
+        committed_objective(body.profile)
         scenario = default_scenario()
         try:
-            r = remove_action(problem(scenario, backend.limits), body.package_ids, body.action_id,
+            r = remove_action(problem(scenario, backend.limits, body.profile), body.package_ids, body.action_id,
                               evaluator(body.profile, scenario))
         except ValueError as e:
             raise unprocessable(e)
@@ -388,10 +419,9 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             if car_trip_km is None:
                 scenario = default_scenario()
                 evaluate = evaluator(body.profile, scenario)
-                request = lambda ids: RoutingRequest(tuple(sorted(set(ids))), backend.thresholds_min,
-                                                     backend.primary_t_min, backend.cap_min)
-                car_trip_km, source = mean_car_distance_km(evaluate(request(body.package_ids)), evaluate(request(())),
-                                                           backend.od_car_distance_km)
+                p = problem(scenario, backend.limits, body.profile)
+                car_trip_km, source = mean_car_distance_km(evaluate(build_request(p, body.package_ids)),
+                                                           evaluate(build_request(p, ())), backend.od_car_distance_km)
                 status = None if car_trip_km is None else "modelled"
             r = co2_for_package(
                 [co2.candidates[c] for c in body.package_ids], co2.catalog, default_scenario(),

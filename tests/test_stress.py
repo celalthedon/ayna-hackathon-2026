@@ -16,11 +16,11 @@ from citypilot.decision_engine import (
     Parking,
     ResourceResult,
     Scenario,
-    ServiceGroup,
     StressGrid,
     StressSetup,
     compute_resources,
     load_fixture,
+    make_catalog_patches,
     make_catalog_resources,
     make_fixture_evaluator,
     make_problem_for,
@@ -29,6 +29,8 @@ from citypilot.decision_engine import (
     stress_grid_from_assumptions,
     stress_test,
 )
+
+from decision_testkit import FIXTURE_HASHES, fixture_context, service as kit_service, write_objective
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "decision"
@@ -41,8 +43,8 @@ DEFAULT = Scenario(1.0, 1.0, 3.0)
 # --- stress fixture builders (test-only; the time model is synthetic) ---
 
 def service(sid, v):
-    return ServiceGroup(sid, (), v["base_headway_min"], v["full_cycle_km"], v["speed_kmh"], v["stops_per_cycle"],
-                        v["dwell_s"], v["layover_min"], v["coverage"], "fixture", "fixture")
+    return kit_service(sid, v["base_headway_min"], v["full_cycle_km"], v["speed_kmh"], v["stops_per_cycle"],
+                       v["dwell_s"], v["layover_min"], v["coverage"])
 
 
 def stress_catalog(fx):
@@ -51,7 +53,7 @@ def stress_catalog(fx):
         service_groups={k: service(k, v) for k, v in cat["service_groups"].items()},
         prebuilt_services={k: service(k, v) for k, v in cat["prebuilt_services"].items()},
         links={k: Link(k, v["kind"], v["length_m"], v["requires_construction"], "fixture") for k, v in cat["links"].items()},
-        parking={k: Parking(k, "fixture") for k in cat["parking"]},
+        parking={k: Parking(k, "fixture", v.get("baseline_enabled", False)) for k, v in cat["parking"].items()},
     )
 
 
@@ -64,9 +66,7 @@ def stress_candidates(fx):
 
 
 def objective_file(tmp_path, objective):
-    path = tmp_path / "objective_decision.json"
-    path.write_text(json.dumps({"objective": objective, "note": "set explicitly in test; gate not run"}))
-    return path
+    return write_objective(tmp_path, objective)
 
 
 def stress_setup(tmp_path, fx=STRESS):
@@ -81,7 +81,9 @@ def stress_setup(tmp_path, fx=STRESS):
         thresholds_min=(40, 45, 50),
         primary_t_min=lim["T_min"],
         cap_min=lim["C_min"],
-        objective_path=objective_file(tmp_path, fx["objective"]),
+        objective_dir=objective_file(tmp_path, fx["objective"]),
+        model_hashes=FIXTURE_HASHES,
+        context=fixture_context(patches_for=make_catalog_patches(candidates, catalog, DEFAULT)),
         resources=make_catalog_resources(candidates, catalog, DEFAULT),
     )
     grid = StressGrid(fx["grid"]["speed_levels_kmh"], fx["grid"]["headway_levels_min"])
@@ -239,7 +241,7 @@ def table_resources(table):
     return resources
 
 
-def static_problem(fx, objective_path, prerequisites=None):
+def static_problem(fx, objective_dir, prerequisites=None):
     lim = fx["limits"]
     return DecisionProblem(
         candidate_ids=tuple(sorted(fx["actions"])),
@@ -250,7 +252,9 @@ def static_problem(fx, objective_path, prerequisites=None):
         thresholds_min=(40, 45, 50),
         primary_t_min=lim["T_min"],
         cap_min=lim["C_min"],
-        objective_path=objective_path,
+        objective_dir=objective_dir,
+        model_hashes=FIXTURE_HASHES,
+        context=fixture_context(),
         resources=table_resources(fx["actions"]),
     )
 
@@ -295,6 +299,31 @@ def test_removing_prerequisite_removes_dependents(tmp_path):
 
 
 def test_removal_without_objective_decision(tmp_path):
-    problem = static_problem(FOUR, tmp_path / "missing.json")
+    problem = static_problem(FOUR, tmp_path / "no_objective")
     with pytest.raises(FileNotFoundError):
         remove_action(problem, ("A", "C", "D"), "A", make_fixture_evaluator(FOUR))
+
+
+
+# --- real model whose routing adapter rejects stress factors ---
+
+def test_stress_not_available_when_adapter_rejects_factors(tmp_path):
+    setup = stress_setup(tmp_path)
+    fixture_evaluator_for = setup.evaluator_for
+
+    def adapter_evaluator_for(scenario):
+        default = scenario.speed_factor == 1 and all(f == 1 for f in (scenario.headway_factor_by_group or {}).values())
+        if not default:
+            def reject(request):
+                raise engine.StressFactorsNotSupported("non-default stress factors are not supported yet")
+            return reject
+        return fixture_evaluator_for(scenario)
+
+    r = stress_test(StressSetup(setup.problem_for, adapter_evaluator_for, setup.grid, setup.H_hours), ("A", "C", "D"))
+    assert r.status == "not_available"
+    assert r.message.startswith("stress not available for this model yet")
+    assert r.points == () and r.worst is None and r.reoptimization is None
+
+
+def test_fixture_stress_status_ok(acd_stress):
+    assert acd_stress.status == "ok" and acd_stress.message == ""

@@ -24,7 +24,7 @@ def service(sid, headway, km, speed, stops, dwell, layover, coverage="full"):
     return ServiceGroup(
         service_group_id=sid, pattern_ids=(f"{sid}_out", f"{sid}_in"), base_headway_min=headway,
         full_cycle_km=km, speed_kmh=speed, stops_per_cycle=stops, dwell_s=dwell, layover_min=layover,
-        coverage=coverage, status=FIXTURE, speed_status=FIXTURE,
+        coverage=coverage, field_status={"base_headway_min": FIXTURE, "speed_kmh": FIXTURE},
     )
 
 
@@ -44,7 +44,7 @@ def catalog():
             "L2": Link("L2", "bike", 1200, True, FIXTURE),
             "L3": Link("L3", "walk", 40, True, FIXTURE),
         },
-        parking={"P1": Parking("P1", FIXTURE)},
+        parking={"P1": Parking("P1", FIXTURE, baseline_enabled=False)},
     )
 
 
