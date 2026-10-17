@@ -70,23 +70,139 @@ DECISION_EXTRA_IMPORTS = frozenset({"csv", "itertools", "datetime", "yaml"})
 DECISION_NONLITERAL_DEFAULT_FUNCTIONS = frozenset({"count_lost", "gate_objective"})
 
 
+# These are syntax allowances, not permission to execute notebook analysis.
+DECISION_BASE_CLASSES = frozenset({"ValueError", "NotImplementedError"})
+DECISION_DEFAULT_CONSTANTS = {"count_lost": frozenset({"GATE_THRESHOLDS_MIN"}),
+                              "gate_objective": frozenset({"GATE_THRESHOLDS_MIN"})}
+
+
+def _decision_annotation(node: ast.AST) -> None:
+    """Only declarative type syntax, including quoted forward references."""
+    if isinstance(node, ast.Name):
+        return
+    if isinstance(node, ast.Constant):
+        if node.value is None or node.value is Ellipsis:
+            return
+        if isinstance(node.value, str):
+            try:
+                _decision_annotation(ast.parse(node.value, mode="eval").body)
+                return
+            except SyntaxError as exc:
+                raise ExportError("Invalid decision forward annotation") from exc
+    elif isinstance(node, ast.Subscript):
+        _decision_annotation(node.value)
+        _decision_annotation(node.slice)
+        return
+    elif isinstance(node, (ast.Tuple, ast.List)):
+        for item in node.elts:
+            _decision_annotation(item)
+        return
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        _decision_annotation(node.left)
+        _decision_annotation(node.right)
+        return
+    raise ExportError("Decision annotations must be declarative type syntax")
+
+
+def _decision_function(node: ast.FunctionDef | ast.AsyncFunctionDef,
+                       constants: set[str], *, method: bool = False) -> None:
+    # Existing PackageOutcome properties are the only required method decorators.
+    if node.decorator_list and not (method and len(node.decorator_list) == 1
+            and isinstance(node.decorator_list[0], ast.Name)
+            and node.decorator_list[0].id == "property"):
+        raise ExportError("Decision function decorators are not approved")
+    approved = DECISION_DEFAULT_CONSTANTS.get(node.name, frozenset()) if not method else frozenset()
+    defaults = [*node.args.defaults, *(v for v in node.args.kw_defaults if v is not None)]
+    for value in defaults:
+        if not (_literal(value) or (isinstance(value, ast.Name)
+                and value.id in approved and value.id in constants)):
+            raise ExportError("Decision defaults must be literals or approved module constants")
+    args = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+    args += [v for v in (node.args.vararg, node.args.kwarg) if v is not None]
+    for arg in args:
+        if arg.annotation is not None:
+            _decision_annotation(arg.annotation)
+    if node.returns is not None:
+        _decision_annotation(node.returns)
+    if getattr(node, "type_params", []):
+        raise ExportError("Decision generic type parameters are not approved")
+
+
+def _decision_class(node: ast.ClassDef, constants: set[str]) -> None:
+    if node.keywords or getattr(node, "type_params", []):
+        raise ExportError("Decision metaclasses and generic type parameters are not approved")
+    for base in node.bases:
+        if not isinstance(base, ast.Name) or base.id not in DECISION_BASE_CLASSES:
+            raise ExportError("Decision class bases must be approved explicit names")
+    for decorator in node.decorator_list:
+        if isinstance(decorator, ast.Name) and decorator.id == "dataclass":
+            continue
+        if (isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Name)
+                and decorator.func.id == "dataclass" and not decorator.args
+                and all(k.arg == "frozen" and isinstance(k.value, ast.Constant)
+                        and type(k.value.value) is bool for k in decorator.keywords)
+                and len(decorator.keywords) <= 1):
+            continue
+        raise ExportError("Only approved dataclass decorators with literal options are permitted")
+    for member in node.body:
+        if isinstance(member, ast.Expr) and isinstance(member.value, ast.Constant) and isinstance(member.value.value, str):
+            continue
+        if isinstance(member, ast.AnnAssign) and isinstance(member.target, ast.Name):
+            _decision_annotation(member.annotation)
+            # Exact existing immutable empty default; no general constructor calls.
+            empty_bike_set = (node.name == "DecisionProblem" and member.target.id == "requires_bike"
+                and ast.unparse(member.annotation) == "frozenset[str]"
+                and isinstance(member.value, ast.Call) and isinstance(member.value.func, ast.Name)
+                and member.value.func.id == "frozenset" and not member.value.args and not member.value.keywords)
+            if member.value is not None and not (_literal(member.value) or empty_bike_set):
+                raise ExportError("Decision field values must be literals (except the approved empty bike set)")
+            if member.target.id in {"dataclass", "property", "frozenset", "set"} | DECISION_BASE_CLASSES:
+                raise ExportError("Decision field shadows an import-time approved name")
+        elif isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if member.name in {"dataclass", "property", "frozenset", "set"} | DECISION_BASE_CLASSES:
+                raise ExportError("Decision method shadows an import-time approved name")
+            _decision_function(member, constants, method=True)
+        else:
+            raise ExportError("Decision class bodies permit only docstrings, annotated fields and methods")
+
+
 def _safe_decision_module(source: str) -> None:
-    """Owner "ali": the decision allowlist above, then the shared rules for everything else."""
+    """Validate import-time syntax; function bodies are never executed by export."""
     try:
         module = ast.parse(source)
     except SyntaxError as exc:
         raise ExportError(f"Exported code must be plain Python (no magics): {exc}") from exc
+    constants: set[str] = set()
+    protected = {"dataclass", "property", "frozenset", "set"} | DECISION_BASE_CLASSES
     for node in module.body:
+        # Prevent approved constructors/decorators/bases being rebound before use.
+        bindings = []
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bindings = [node.name]
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            bindings = [t.id for t in targets if isinstance(t, ast.Name)]
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            bindings = [a.asname or a.name.split(".")[0] for a in node.names]
+            if isinstance(node, ast.ImportFrom) and node.module == "dataclasses" and not node.level:
+                bindings = [b for b, a in zip(bindings, node.names) if not (a.name == "dataclass" and b == "dataclass")]
+        constants.difference_update(bindings)
+        if set(bindings) & protected:
+            raise ExportError("Decision statement shadows an import-time approved name")
         if isinstance(node, ast.ClassDef) and node.name in DECISION_CLASSES:
+            _decision_class(node, constants)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _decision_function(node, constants)
+        elif isinstance(node, ast.Import) and {n.name for n in node.names} <= DECISION_EXTRA_IMPORTS:
             continue
-        if isinstance(node, ast.Import) and {n.name for n in node.names} <= DECISION_EXTRA_IMPORTS:
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module in DECISION_EXTRA_IMPORTS:
             continue
-        if (isinstance(node, ast.ImportFrom) and not node.level and node.module in DECISION_EXTRA_IMPORTS):
-            continue
-        if (isinstance(node, ast.FunctionDef) and node.name in DECISION_NONLITERAL_DEFAULT_FUNCTIONS
-                and not node.decorator_list):
-            continue
-        _safe_module(ast.unparse(node))
+        else:
+            if isinstance(node, ast.AnnAssign):
+                _decision_annotation(node.annotation)
+            _safe_module(ast.unparse(node))
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                constants.update(bindings)
 
 
 def render(notebook: Path, owner: str, *, repo_root: Path = ROOT) -> tuple[Path, bytes]:
