@@ -1,0 +1,30 @@
+{
+  "objective": "count",
+  "profile": "P",
+  "lost_T": {
+    "40": 1424,
+    "45": 1148,
+    "50": 799
+  },
+  "share_T": {
+    "40": 0.5239146431199412,
+    "45": 0.42236938925680645,
+    "50": 0.29396615158204564
+  },
+  "total_OD": 2718,
+  "thresholds": {
+    "T_min": [
+      40,
+      45,
+      50
+    ],
+    "min_lost": 20,
+    "low_share": 0.15,
+    "high_share": 0.9
+  },
+  "timestamp": "2026-10-17T20:33:03.034152+00:00",
+  "input_hashes": {
+    "normal": "363edeb1018a028d7677e8bf5b4687249abe16447e5abd91b7b596e639c875dd",
+    "disrupted": "5544078a1b3f9cd112f537e527517c433d4961ef0045dcd6adc419de673dd9a7"
+  }
+}
