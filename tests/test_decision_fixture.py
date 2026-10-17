@@ -4,15 +4,13 @@ from pathlib import Path
 import pytest
 
 from citypilot.decision_engine import (
-    CONTRACT_VERSION,
-    EvaluationResult,
     ResourceResult,
     load_fixture,
     make_fixture_evaluator,
     rank_key,
 )
 
-from decision_testkit import make_request  # noqa: E402
+from decision_testkit import make_evaluation, make_request  # noqa: E402
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "decision" / "fixture_4action.json"
 FIXTURE = load_fixture(FIXTURE_PATH)
@@ -95,8 +93,8 @@ def test_km_breaks_tie():
 
 
 def synthetic_result(ids):
-    return EvaluationResult(CONTRACT_VERSION, "fixture", "fixture-ods", "mitigated", "P", "synthetic", 120, 0.0,
-                            (), {45: 5}, 300, 45)
+    # 5 ODs at 40 min and 1 at 100 min: within_counts {45: 5}, capped sum 300 (as before)
+    return make_evaluation([40] * 5 + [100], config_hash="synthetic", thresholds=(45,))
 
 
 def test_rank_fewer_bus_hours_wins():

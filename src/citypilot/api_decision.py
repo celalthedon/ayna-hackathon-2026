@@ -189,7 +189,8 @@ def _evaluation_to_dict(e: EvaluationResult) -> dict:
 
 def _evaluation_from_dict(d: dict) -> EvaluationResult:
     return EvaluationResult(**(d | {
-        "od_results": tuple(ODResult(*o) for o in d["od_results"]),
+        "od_results": tuple(ODResult(od_id=o[0], status=o[1], minutes=o[2], capped_minutes=o[3])
+                            for o in d["od_results"]),
         "within_counts": {int(t): n for t, n in d["within_counts"].items()},
         "warnings": tuple(d["warnings"]),
     }))

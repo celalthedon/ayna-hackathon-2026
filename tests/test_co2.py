@@ -6,16 +6,12 @@ import pytest
 
 from citypilot.decision_engine import (
     Candidate,
-    Link,
-    ModelCatalog,
-    Parking,
     Scenario,
-    ServiceGroup,
     co2_for_package,
     load_fixture,
 )
 
-from decision_testkit import make_evaluation, service as kit_service  # noqa: E402
+from decision_testkit import catalog as kit_catalog, link, make_evaluation, parking, service as kit_service  # noqa: E402
 
 FIXTURE = load_fixture(Path(__file__).resolve().parent / "fixtures" / "decision" / "fixture_stress.json")
 BUS_KG_PER_VKM = 0.97992  # P13 default
@@ -29,11 +25,11 @@ def service(sid, v):
 
 
 CAT = FIXTURE["catalog"]
-CATALOG = ModelCatalog(
+CATALOG = kit_catalog(
     service_groups={k: service(k, v) for k, v in CAT["service_groups"].items()},
     prebuilt_services={k: service(k, v) for k, v in CAT["prebuilt_services"].items()},
-    links={k: Link(k, v["kind"], v["length_m"], v["requires_construction"], "fixture") for k, v in CAT["links"].items()},
-    parking={k: Parking(k, "fixture", False) for k in CAT["parking"]},
+    links={k: link(k, v["kind"], v["length_m"], v["requires_construction"]) for k, v in CAT["links"].items()},
+    parking={k: parking(k) for k in CAT["parking"]},
 )
 CANDIDATES = {
     cid: Candidate(cid, a["kind"], target_id=a.get("target_id"), pct=a.get("pct"), link_ids=tuple(a.get("link_ids", ())))
@@ -107,8 +103,8 @@ def test_invalid_inputs_fail(bad):
 
 
 def test_partial_coverage_service_fails_loudly():
-    partial = ServiceGroup("SG_R2", (), 7.5, None, None, None, None, None, "partial", {"base_headway_min": "fixture"})
-    catalog = ModelCatalog({"SG_R2": partial}, CATALOG.prebuilt_services, CATALOG.links, CATALOG.parking)
+    partial = kit_service("SG_R2", 7.5, None, None, None, None, None, "partial")
+    catalog = kit_catalog({"SG_R2": partial}, dict(CATALOG.prebuilt_services), dict(CATALOG.links), dict(CATALOG.parking))
     with pytest.raises(ValueError, match="SG_R2"):
         co2_for_package([CANDIDATES["A"]], catalog, SCENARIO, bus_kg_per_vkm=BUS_KG_PER_VKM, car_kg_per_pkm=CAR_KG_PER_PKM)
 

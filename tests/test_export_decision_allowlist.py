@@ -21,24 +21,30 @@ def test_shared_rules_are_byte_for_byte_unchanged():
     assert hashlib.sha256(ast.get_source_segment(src, fn).encode()).hexdigest() == SAFE_MODULE_SHA256
 
 
-def test_temporary_stub_classes_are_pinned():
-    # removed by the decision migration PR; this list must only shrink
-    assert ex.DECISION_TEMPORARY_STUB_CLASSES == {
-        "EvaluationResult", "Link", "ModelCatalog", "ODResult", "Parking", "RoutingPatch", "RoutingRequest",
-        "ServiceGroup",
-    }
+CONTRACT_CLASSES = ("EvaluationResult", "Link", "ModelCatalog", "ODResult", "Parking", "RoutingPatch",
+                    "RoutingRequest", "ServiceGroup")
+
+
+def test_no_temporary_stub_classes_remain():
+    assert not hasattr(ex, "DECISION_TEMPORARY_STUB_CLASSES")
+
+
+@pytest.mark.parametrize("name", CONTRACT_CLASSES)
+def test_decision_cannot_redefine_contract_classes(name):
+    assert name not in ex.DECISION_CLASSES
+    with pytest.raises(ex.ExportError, match="contracts.py"):
+        ex._safe_decision_module(f"class {name}:\n    pass")
 
 
 def test_decision_allowlist_is_pinned():
     assert len(ex.DECISION_CLASSES) == 20
-    assert not ex.DECISION_CLASSES & ex.DECISION_TEMPORARY_STUB_CLASSES
     assert ex.DECISION_EXTRA_IMPORTS == {"csv", "itertools", "datetime", "yaml"}
     assert ex.DECISION_NONLITERAL_DEFAULT_FUNCTIONS == {"count_lost", "gate_objective"}
 
 
 @pytest.mark.parametrize("source", [
     "from dataclasses import dataclass\n@dataclass(frozen=True)\nclass Scenario:\n    x: int",
-    "class ServiceGroup:\n    pass",  # temporary stub
+    "from citypilot.contracts import ServiceGroup",
     "import csv\nimport itertools\nimport yaml\nfrom datetime import datetime, timezone",
     "G = (40, 45, 50)\ndef count_lost(a, b, t=G):\n    return a",
 ])
