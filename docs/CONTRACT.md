@@ -6,7 +6,9 @@ parking and retained-detail clarifications. The product scope remains
 `CITYPILOT_FINAL_v4.md`; ownership/stages remain
 `CITYPILOT_Balanced_Notebook_Roadmap.md`. Ali must replace his local stubs and
 review the integration before a complete C4 handoff is claimed. No decision,
-resource, search, C5, frontend or CO2 implementation is included.
+resource, search, frontend or CO2 implementation is included. C5 phase 1 now
+implements existing-service headway changes and real bus stress; later activation
+phases remain unsupported. See `C5_SERVICE_STRESS.md`.
 
 ## Serialization and identity
 
@@ -55,21 +57,36 @@ Only the first accepts a finite positive `headway_min`; all others require null.
 Patches require mitigated state. Catalog validation checks target mappings and
 P/B eligibility (P cannot activate cycling links or parking).
 
-Agreed future execution semantics, **not implemented by declaring schemas**:
+Implemented C5 phase-1 execution semantics:
 
-- Headway factors affect existing `service_groups` only. Unknown existing-group
-  keys fail; prebuilt services retain their design headway.
-- Speed factors affect the moving time of all bus services, including activated
-  prebuilt services. Dwell stays fixed; waiting and layover are not moving time.
-- An explicit `set_service_headway` is the exact final interval: 7.2 stays 7.2,
-  is never rounded, and is never multiplied by a headway factor again.
-- Candidate IDs are trace information; routing does not infer patches from them.
+- `speed_factor` is positive finite and divides only `bus_ride` moving time.
+  Bus dwell/continuation, walking/pushing, cycling, metro, parking and transfers
+  retain their exact baseline costs. No second boarding wait is added onboard.
+- If supplied, `headway_factor_by_group` must **exactly cover** existing
+  `service_groups`. Missing/unknown/prebuilt keys (including an empty mapping
+  with this nonempty catalog) fail. Null means all factors equal 1. Each factor
+  is positive finite; multiply the group's immutable baseline headway, then use
+  half the effective headway for `bus_board`. Prebuilt activation is unsupported.
+- An explicit `set_service_headway` is the exact final interval: it overrides
+  the factored headway for that existing group. 7.2 stays 7.2, waits 3.6, and is
+  never rounded or multiplied again. Conflicts fail; duplicate/order-equivalent
+  patches canonicalize. Unknown existing-group patch IDs fail explicitly.
+- Normal/disrupted permit stress but no intervention patches. Mitigated starts
+  from disrupted topology and accepts only existing-group headway patches. Empty
+  mitigated is numerically identical to disrupted with identical factors, while
+  its public state/config_hash remain distinct.
+- `activate_service`, `activate_link`, `enable_parking` still fail explicitly.
+  Declaring these schema variants does not implement them. Candidate IDs remain
+  trace information; no compiler is added. Assumption overrides have no v1 field.
 
-The baseline runtime supports normal/disrupted × P/B, empty patches, unchanged
-speed, null/empty headway-factor mapping and valid threshold/cap variations.
-It explicitly rejects mitigated, patches and nonempty stress mappings/nonunit
-speed. Assumption overrides have no v1 request field and fail strict parsing.
-Schema support does not imply C5/stress execution support.
+Scenarios derive from immutable graphs/source alternatives on every cache miss;
+no factor is compounded onto a prior scenario. A bounded two-entry physical-cost
+cache excludes threshold/cap/trace metadata, while public config_hash covers the
+entire canonical request. Mapping/patch ordering cannot alter the hash. Null
+factors and explicit all-ones maps can have distinct wire hashes with equal costs.
+All parallel alternatives are transformed before minimum-cost selection; explicit
+zero edges are kept. Evaluation and journey share the same derived graph/arcs.
+See `C5_SERVICE_STRESS.md` for evidence, runtime examples and remaining phases.
 
 ## Catalog and evidence
 
@@ -176,7 +193,7 @@ assumed and metro entry/interchange geometry schematic, all disclosed in warning
 
 `docs/examples/synthetic_{request,catalog,evaluation,journey}.json` are explicitly
 synthetic schema demonstrations, with invented IDs/data. Their mitigated/stress
-request is intentionally outside baseline runtime support. `tools/check_baseline.py`
+request remains outside phase-1 runtime support because it contains activations. `tools/check_baseline.py`
 provides a real baseline v1 request/result example against an explicit bundle;
 see `C34_ADAPTERS.md` for commands and verified numerical parity.
 

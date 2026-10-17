@@ -3,8 +3,9 @@
 Notebook `routing_export` cells remain the source of truth; generate the module
 only with `tools/export_notebooks.py --owner celal`. Shared contracts are now v1;
 the local BaselineJourneyResult dialect and legacy payload fields are removed.
-See `CONTRACT.md` for exact schemas, units, evidence and future stress semantics.
-Declaring patches/stress does not implement their C5 execution.
+See `CONTRACT.md` for exact schemas, units and evidence. C5 phase 1 now
+implements existing-service headway patches and real bus speed/headway stress;
+see `C5_SERVICE_STRESS.md`. Later activations remain explicitly unsupported.
 
 ## Immutable inputs and history
 
@@ -99,7 +100,7 @@ terminal-to-first-exit journey. Expected physical/leg-sum time is
 request, evaluation and journey all parse through shared v1 serializers.
 
 Ali still needs to replace/import his shared stubs and adapt his consumer logic
-as listed in `CONTRACT.md`, then verify resource/search integration. Baseline
-runtime explicitly rejects C5/stress; activation/readiness, frontend and CO2
-remain out of scope. OD distance definition/schema is unresolved; no distance
+as listed in `CONTRACT.md`, then verify resource/search integration. C5 phase-1
+service stress is now implemented; activation/readiness, frontend and CO2 remain
+out of scope. OD distance definition/schema is unresolved; no distance
 default or zero substitution was added and manual input remains the future fallback.
