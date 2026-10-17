@@ -1,0 +1,30 @@
+{
+  "objective": "sum",
+  "profile": "B",
+  "lost_T": {
+    "40": 0,
+    "45": 0,
+    "50": 0
+  },
+  "share_T": {
+    "40": 0.0,
+    "45": 0.0,
+    "50": 0.0
+  },
+  "total_OD": 2718,
+  "thresholds": {
+    "T_min": [
+      40,
+      45,
+      50
+    ],
+    "min_lost": 20,
+    "low_share": 0.15,
+    "high_share": 0.9
+  },
+  "timestamp": "2026-10-17T21:27:03.058414+00:00",
+  "input_hashes": {
+    "normal": "8e907b9224fda41c084989b1b521f1ccfed822497b392620212ec0945158bd13",
+    "disrupted": "82ab6245a0bebc5a6dff4af3073a2026dcc74bc28b67dd22c10a7fd256b8f8ec"
+  }
+}
