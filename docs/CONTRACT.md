@@ -205,3 +205,31 @@ evidence. Use the profile-aware OD table and validate model/OD/config hashes.
 Per-profile objective gates remain Ali-owned. He should regenerate only his
 module after his own notebook edits and test his resource/search fixtures against
 these objects. No Ali-owned code was changed or its compatibility asserted here.
+
+
+## C5 phase-2 registration convention (pending Ali review)
+
+Registered activate_service is now executable in mitigated requests. See
+[C5_ACTIVATE_SERVICE.md](C5_ACTIVATE_SERVICE.md) for the separate hash-bound
+registry, exact shared ServiceGroup/ServicePattern input fields and runnable
+synthetic fixtures. Existing service_groups and prebuilt_services stay separate.
+For prebuilt JourneyLeg values, route_id identifies the service variant while
+pattern_id identifies its shared directed pattern. The supplement hash extends
+model_version; od_set_id and profile-aware OD IDs are unchanged. No shared wire
+fields or legacy guessing are added. activate_link and enable_parking remain
+unsupported. Declared schema coverage does not imply real M assets or compiler,
+resource, optimization, frontend or CO2 readiness.
+
+Stop registry location_kind may explicitly be station_exit_proxy, requiring
+assumption provenance and a visible PREBUILT_STATION_EXIT_PROXY warning. This
+adds no shared wire fields and never upgrades a proxy to verified bus coordinates.
+Reversed return stop order may be an explicit preparation assumption; its road
+geometry and distances must be independently directed and supplied. Missing
+segment_m remains an error. Current real-data targets exclude M9.
+
+
+Publication integration: empty decision packages use disrupted + declared
+closure_id; action packages use mitigated + closure_id. Unsupported well-formed
+capabilities use shared StressFactorsNotSupported(NotImplementedError); malformed
+input continues to use ContractError. All currently declared v1 bus speed/headway
+stress is supported. EvaluationResult has no candidate_ids field.

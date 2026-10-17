@@ -21,6 +21,10 @@ class ContractError(ValueError):
     """Invalid or incompatible versioned payload."""
 
 
+class StressFactorsNotSupported(NotImplementedError):
+    """A well-formed routing capability is unavailable; not invalid input."""
+
+
 def _require(condition, message):
     if not condition:
         raise ContractError(message)
