@@ -1,0 +1,2137 @@
+{
+  "activated_journey": {
+    "journey": {
+      "cap_min": 120.0,
+      "config_hash": "ce7bc5c1d98ecaf3059026bad64115277076217c18edb985a6472faa092f8d7f",
+      "contract_version": "1.0",
+      "destination_id": "destination:metro_exit:44",
+      "generalised_cost_min": 14.245307454077144,
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              49.815491,
+              40.375105
+            ],
+            [
+              49.81550446633983,
+              40.37517508221001
+            ],
+            [
+              49.8155657,
+              40.3751682
+            ],
+            [
+              49.8156255,
+              40.3751724
+            ],
+            [
+              49.8157012,
+              40.37517770000001
+            ],
+            [
+              49.81571387638909,
+              40.37508631451454
+            ],
+            [
+              49.81571,
+              40.375086
+            ]
+          ],
+          [
+            [
+              49.81581426162741,
+              40.3750946984238
+            ],
+            [
+              49.8158441,
+              40.3748855
+            ],
+            [
+              49.8158927,
+              40.3745702
+            ],
+            [
+              49.8159617,
+              40.374123000000004
+            ],
+            [
+              49.816043,
+              40.3736646
+            ],
+            [
+              49.8161304,
+              40.37306929999999
+            ],
+            [
+              49.8162068,
+              40.37286249999999
+            ],
+            [
+              49.8162319,
+              40.372814699999985
+            ],
+            [
+              49.8162862,
+              40.372752399999996
+            ],
+            [
+              49.8163366,
+              40.3727208
+            ],
+            [
+              49.8163967,
+              40.3727024
+            ],
+            [
+              49.8164579,
+              40.37269369999999
+            ],
+            [
+              49.8166452,
+              40.3726919
+            ],
+            [
+              49.8176992,
+              40.3727752
+            ],
+            [
+              49.8178424,
+              40.37278640000001
+            ],
+            [
+              49.8180534,
+              40.3728053
+            ],
+            [
+              49.8185195,
+              40.37281320000001
+            ],
+            [
+              49.8186012,
+              40.372810099999995
+            ],
+            [
+              49.8186589,
+              40.372805
+            ],
+            [
+              49.8187192,
+              40.37279169999999
+            ],
+            [
+              49.8187588,
+              40.372775600000004
+            ],
+            [
+              49.8188111,
+              40.37274699999999
+            ],
+            [
+              49.8188835,
+              40.3726959
+            ],
+            [
+              49.8189843,
+              40.37261089999999
+            ],
+            [
+              49.8190599,
+              40.3725477
+            ],
+            [
+              49.8191016,
+              40.3725111
+            ],
+            [
+              49.8191975,
+              40.372431
+            ],
+            [
+              49.8198413,
+              40.3718733
+            ],
+            [
+              49.8205036,
+              40.3712379
+            ],
+            [
+              49.820556,
+              40.3711973
+            ],
+            [
+              49.8207381,
+              40.371070599999996
+            ],
+            [
+              49.8207298,
+              40.371157999999994
+            ],
+            [
+              49.8207021,
+              40.37135919999999
+            ],
+            [
+              49.8207992,
+              40.37136699999999
+            ],
+            [
+              49.821203,
+              40.3713942
+            ],
+            [
+              49.8219746,
+              40.371435700000006
+            ],
+            [
+              49.82271,
+              40.3714884
+            ],
+            [
+              49.823364,
+              40.37153450000001
+            ],
+            [
+              49.823497,
+              40.3715439
+            ],
+            [
+              49.8234884,
+              40.3715899
+            ],
+            [
+              49.823378,
+              40.37217819999999
+            ],
+            [
+              49.8233449,
+              40.372364399999995
+            ],
+            [
+              49.8233347,
+              40.37246249999999
+            ],
+            [
+              49.8233384,
+              40.3725209
+            ],
+            [
+              49.8233622,
+              40.3725631
+            ],
+            [
+              49.8233943,
+              40.37258560000001
+            ],
+            [
+              49.823439,
+              40.372606
+            ],
+            [
+              49.823807,
+              40.37268319999998
+            ],
+            [
+              49.824277,
+              40.372808199999994
+            ],
+            [
+              49.8243889,
+              40.3728411
+            ],
+            [
+              49.8244394,
+              40.372364
+            ],
+            [
+              49.8245913,
+              40.3716344
+            ],
+            [
+              49.8246318,
+              40.371547299999996
+            ],
+            [
+              49.8246852,
+              40.3714872
+            ],
+            [
+              49.8247613,
+              40.3714391
+            ],
+            [
+              49.8248581,
+              40.3714135
+            ],
+            [
+              49.8249514,
+              40.3714128
+            ],
+            [
+              49.825033,
+              40.371427299999986
+            ],
+            [
+              49.8251315,
+              40.3714774
+            ],
+            [
+              49.825193,
+              40.3715388
+            ],
+            [
+              49.8252751,
+              40.37167120000001
+            ],
+            [
+              49.8254359,
+              40.3719269
+            ],
+            [
+              49.8254855,
+              40.372084499999985
+            ],
+            [
+              49.8255337,
+              40.3722769
+            ],
+            [
+              49.8255606,
+              40.37243939999999
+            ],
+            [
+              49.8255723,
+              40.3726044
+            ],
+            [
+              49.8255743,
+              40.37270410000001
+            ],
+            [
+              49.8255667,
+              40.372813799999996
+            ],
+            [
+              49.8255609,
+              40.37288070000001
+            ],
+            [
+              49.8255488,
+              40.3730188
+            ],
+            [
+              49.82551000000001,
+              40.37325380000001
+            ],
+            [
+              49.8255121,
+              40.3736146
+            ],
+            [
+              49.8255272,
+              40.37369519999999
+            ],
+            [
+              49.8255651,
+              40.3737554
+            ],
+            [
+              49.8256349,
+              40.3737884
+            ],
+            [
+              49.8257299,
+              40.3738108
+            ],
+            [
+              49.8263252,
+              40.3738897
+            ],
+            [
+              49.8270325,
+              40.37398989999999
+            ],
+            [
+              49.8278783,
+              40.3741113
+            ],
+            [
+              49.8280379,
+              40.3741386
+            ],
+            [
+              49.8282715,
+              40.3741804
+            ],
+            [
+              49.8284692,
+              40.37421729999999
+            ],
+            [
+              49.8287091,
+              40.3742681
+            ],
+            [
+              49.8289847,
+              40.374335800000004
+            ],
+            [
+              49.8292848,
+              40.37441330000001
+            ],
+            [
+              49.82938730000001,
+              40.3744392
+            ],
+            [
+              49.8298314,
+              40.374555799999996
+            ],
+            [
+              49.8305447,
+              40.3747317
+            ],
+            [
+              49.8305955,
+              40.374744699999994
+            ],
+            [
+              49.8310229,
+              40.37484829999998
+            ],
+            [
+              49.8314289,
+              40.374943099999996
+            ],
+            [
+              49.8315576,
+              40.37497129999999
+            ],
+            [
+              49.8316569,
+              40.3749881
+            ],
+            [
+              49.8317579,
+              40.3750008
+            ],
+            [
+              49.8319379,
+              40.37501869999999
+            ],
+            [
+              49.8321779,
+              40.37503869999999
+            ],
+            [
+              49.8330474,
+              40.375109900000005
+            ],
+            [
+              49.8333542,
+              40.3751404
+            ],
+            [
+              49.8334305,
+              40.3751536
+            ],
+            [
+              49.8334989,
+              40.375169500000005
+            ],
+            [
+              49.8336558,
+              40.375208300000004
+            ],
+            [
+              49.8339756,
+              40.37529380000001
+            ],
+            [
+              49.8395073,
+              40.3767855
+            ],
+            [
+              49.8399794,
+              40.37692299999999
+            ],
+            [
+              49.8405581,
+              40.377071099999995
+            ],
+            [
+              49.8406267,
+              40.37708810000001
+            ],
+            [
+              49.8407933,
+              40.3771273
+            ],
+            [
+              49.8408274,
+              40.3771431
+            ],
+            [
+              49.8408455,
+              40.377153299999996
+            ],
+            [
+              49.8408609,
+              40.377167099999994
+            ],
+            [
+              49.8408683,
+              40.377179600000005
+            ],
+            [
+              49.8408716,
+              40.3771906
+            ],
+            [
+              49.8408696,
+              40.37720869999999
+            ],
+            [
+              49.8408649,
+              40.377227099999985
+            ],
+            [
+              49.8408534,
+              40.37725999999999
+            ],
+            [
+              49.8406291,
+              40.37782239999999
+            ],
+            [
+              49.8405578,
+              40.37800169999999
+            ],
+            [
+              49.8405312,
+              40.378064699999996
+            ],
+            [
+              49.8404757,
+              40.3782034
+            ],
+            [
+              49.8402311,
+              40.37882689999999
+            ],
+            [
+              49.8402171,
+              40.37886340000001
+            ],
+            [
+              49.8401913,
+              40.378928099999996
+            ],
+            [
+              49.8417842,
+              40.3793102
+            ],
+            [
+              49.8418856,
+              40.37933390000001
+            ],
+            [
+              49.8433509,
+              40.37970219999998
+            ],
+            [
+              49.8434727,
+              40.379732000000004
+            ],
+            [
+              49.8438423,
+              40.379822399999995
+            ],
+            [
+              49.843937,
+              40.37984550000001
+            ],
+            [
+              49.8440581,
+              40.37987479999999
+            ],
+            [
+              49.8441748,
+              40.379903399999996
+            ],
+            [
+              49.84548240000001,
+              40.38023990000001
+            ],
+            [
+              49.8467736,
+              40.380575099999994
+            ],
+            [
+              49.8468575,
+              40.3805991
+            ],
+            [
+              49.8468763,
+              40.38054499999999
+            ],
+            [
+              49.8471896,
+              40.379837699999996
+            ],
+            [
+              49.8472268,
+              40.379758900000006
+            ],
+            [
+              49.847328,
+              40.37954680000001
+            ],
+            [
+              49.847553,
+              40.3790701
+            ],
+            [
+              49.84766,
+              40.379098500000005
+            ],
+            [
+              49.84855956727981,
+              40.37933688034995
+            ]
+          ],
+          [
+            [
+              49.848521,
+              40.379422
+            ],
+            [
+              49.84851834003779,
+              40.37942283028424
+            ],
+            [
+              49.8485591,
+              40.3794992
+            ],
+            [
+              49.8486008,
+              40.3795773
+            ],
+            [
+              49.8485597,
+              40.37958290000001
+            ],
+            [
+              49.8485419,
+              40.379628299999986
+            ],
+            [
+              49.8487566,
+              40.3796632
+            ],
+            [
+              49.84883865704487,
+              40.379715950995966
+            ],
+            [
+              49.848843,
+              40.37971199999999
+            ]
+          ]
+        ],
+        "type": "MultiLineString"
+      },
+      "geometry_metadata": {
+        "gap_count": 2,
+        "partial": true,
+        "provenance": [
+          {
+            "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+            "source": "immutable C4 bundle + explicit routing scenario",
+            "source_date": null,
+            "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+            "status": "assumption",
+            "synthetic": false
+          },
+          {
+            "evidence": "Partial source geometry: 2 disconnected boundaries retained; no inferred connecting segments.",
+            "source": "immutable C4 bundle",
+            "source_date": null,
+            "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49:geometry-gaps",
+            "status": "assumption",
+            "synthetic": false
+          }
+        ]
+      },
+      "legs": [
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "origin:metro_exit:42",
+          "geometry": {
+            "coordinates": [
+              49.815491,
+              40.375105
+            ],
+            "type": "Point"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:118433",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.0
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:118433",
+          "geometry": {
+            "coordinates": [
+              [
+                49.815491,
+                40.375105
+              ],
+              [
+                49.81550446633983,
+                40.37517508221001
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:118367",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.09853977185194399
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:118367",
+          "geometry": {
+            "coordinates": [
+              [
+                49.81550446633983,
+                40.37517508221001
+              ],
+              [
+                49.8155657,
+                40.3751682
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:117655",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.06584779577678991
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:117655",
+          "geometry": {
+            "coordinates": [
+              [
+                49.8155657,
+                40.3751682
+              ],
+              [
+                49.8156255,
+                40.3751724
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:117656",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.0638904788986747
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:117656",
+          "geometry": {
+            "coordinates": [
+              [
+                49.8156255,
+                40.3751724
+              ],
+              [
+                49.8157012,
+                40.37517770000001
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:117657",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.0808759503103492
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:117657",
+          "geometry": {
+            "coordinates": [
+              [
+                49.8157012,
+                40.37517770000001
+              ],
+              [
+                49.81571387638909,
+                40.37508631451454
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:120333",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.12784141978126895
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:120333",
+          "geometry": {
+            "coordinates": [
+              [
+                49.81571387638909,
+                40.37508631451454
+              ],
+              [
+                49.81571,
+                40.375086
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Approximate ordinary-stop location, not a verified express platform. Original string fields and Ali notes: [{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"001001166\",\"lat\":\"40.375086\",\"line\":\"M1\",\"lon\":\"49.81571\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"published\",\"point_id\":\"P01\",\"seq\":\"1\",\"stop_key\":\"M_ELMLER\",\"stop_name\":\"Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi)\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"001001166\",\"lat\":\"40.375086\",\"line\":\"M1\",\"lon\":\"49.81571\",\"notes\":\"\",\"order_status\":\"assumption\",\"point_id\":\"P01\",\"seq\":\"2\",\"stop_key\":\"M_ELMLER\",\"stop_name\":\"Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi)\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"001001166\",\"lat\":\"40.375086\",\"line\":\"M6\",\"lon\":\"49.81571\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"published\",\"point_id\":\"P01\",\"seq\":\"1\",\"stop_key\":\"M_ELMLER\",\"stop_name\":\"Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi)\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"001001166\",\"lat\":\"40.375086\",\"line\":\"M6\",\"lon\":\"49.81571\",\"notes\":\"\",\"order_status\":\"assumption\",\"point_id\":\"P01\",\"seq\":\"2\",\"stop_key\":\"M_ELMLER\",\"stop_name\":\"Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi)\"}]",
+              "source": "Supplied m_stops_directed.csv and immutable C4 road model",
+              "source_date": null,
+              "source_id": "m:stop:M_ELMLER",
+              "status": "assumption",
+              "synthetic": false
+            },
+            {
+              "evidence": "Straight pedestrian access assumed; snap_m=0.33095762964607933; source grade topology retained; not verified pedestrian access.",
+              "source": "Nearest metric walk segment; bidirectional pedestrian connector",
+              "source_date": null,
+              "source_id": "prebuilt-access:M_ELMLER",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:120335",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.004147338717369414
+        },
+        {
+          "alight_stop_id": "M_ELMLER",
+          "board_stop_id": "M_ELMLER",
+          "from_id": "state:120335",
+          "geometry": {
+            "coordinates": [
+              49.81571,
+              40.375086
+            ],
+            "type": "Point"
+          },
+          "mode": "bus",
+          "pattern_id": "M1_A",
+          "provenance": [
+            {
+              "evidence": "Complete CONSTRUCTED model cycle only; coverage=full does not verify official M-route coverage. A/B service suffix means design headway 6/9 minutes, independent of pattern direction. Both directed patterns included. Speed transferred as arithmetic mean of actual curated SG_R2/SG_R14 calibrated speeds [24.277458329768773, 24.34067887065056] km/h; dwell=25 s at intermediate stops only; full-cycle layover=2*P5=10.0 min. No verified express platforms/street routes. Grade assumptions and uncertain bus access retained.",
+              "source": "Supplied m_stops_directed.csv and immutable C4 road model",
+              "source_date": null,
+              "source_id": "m:service:SVC_M1_A",
+              "status": "assumption",
+              "synthetic": false
+            },
+            {
+              "evidence": "Approximate ordinary-stop location, not a verified express platform. Original string fields and Ali notes: [{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"001001166\",\"lat\":\"40.375086\",\"line\":\"M1\",\"lon\":\"49.81571\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"published\",\"point_id\":\"P01\",\"seq\":\"1\",\"stop_key\":\"M_ELMLER\",\"stop_name\":\"Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi)\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"001001166\",\"lat\":\"40.375086\",\"line\":\"M1\",\"lon\":\"49.81571\",\"notes\":\"\",\"order_status\":\"assumption\",\"point_id\":\"P01\",\"seq\":\"2\",\"stop_key\":\"M_ELMLER\",\"stop_name\":\"Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi)\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"001001166\",\"lat\":\"40.375086\",\"line\":\"M6\",\"lon\":\"49.81571\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"published\",\"point_id\":\"P01\",\"seq\":\"1\",\"stop_key\":\"M_ELMLER\",\"stop_name\":\"Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi)\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"001001166\",\"lat\":\"40.375086\",\"line\":\"M6\",\"lon\":\"49.81571\",\"notes\":\"\",\"order_status\":\"assumption\",\"point_id\":\"P01\",\"seq\":\"2\",\"stop_key\":\"M_ELMLER\",\"stop_name\":\"Elmlər Akademiyası m/st (Hüseyn Cavid Parkı tərəfi)\"}]",
+              "source": "Supplied m_stops_directed.csv and immutable C4 road model",
+              "source_date": null,
+              "source_id": "m:stop:M_ELMLER",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": "SVC_M1_A",
+          "to_id": "state:120337",
+          "transfer_min": 0.0,
+          "wait_min": 3.0,
+          "walk_min": 0.0
+        },
+        {
+          "alight_stop_id": "M_28MAY_NMM",
+          "board_stop_id": "M_ELMLER",
+          "from_id": "state:120337",
+          "geometry": {
+            "coordinates": [
+              [
+                49.81581426162741,
+                40.3750946984238
+              ],
+              [
+                49.8158441,
+                40.3748855
+              ],
+              [
+                49.8158927,
+                40.3745702
+              ],
+              [
+                49.8159617,
+                40.374123000000004
+              ],
+              [
+                49.816043,
+                40.3736646
+              ],
+              [
+                49.8161304,
+                40.37306929999999
+              ],
+              [
+                49.8162068,
+                40.37286249999999
+              ],
+              [
+                49.8162319,
+                40.372814699999985
+              ],
+              [
+                49.8162862,
+                40.372752399999996
+              ],
+              [
+                49.8163366,
+                40.3727208
+              ],
+              [
+                49.8163967,
+                40.3727024
+              ],
+              [
+                49.8164579,
+                40.37269369999999
+              ],
+              [
+                49.8166452,
+                40.3726919
+              ],
+              [
+                49.8176992,
+                40.3727752
+              ],
+              [
+                49.8178424,
+                40.37278640000001
+              ],
+              [
+                49.8180534,
+                40.3728053
+              ],
+              [
+                49.8185195,
+                40.37281320000001
+              ],
+              [
+                49.8186012,
+                40.372810099999995
+              ],
+              [
+                49.8186589,
+                40.372805
+              ],
+              [
+                49.8187192,
+                40.37279169999999
+              ],
+              [
+                49.8187588,
+                40.372775600000004
+              ],
+              [
+                49.8188111,
+                40.37274699999999
+              ],
+              [
+                49.8188835,
+                40.3726959
+              ],
+              [
+                49.8189843,
+                40.37261089999999
+              ],
+              [
+                49.8190599,
+                40.3725477
+              ],
+              [
+                49.8191016,
+                40.3725111
+              ],
+              [
+                49.8191975,
+                40.372431
+              ],
+              [
+                49.8198413,
+                40.3718733
+              ],
+              [
+                49.8205036,
+                40.3712379
+              ],
+              [
+                49.820556,
+                40.3711973
+              ],
+              [
+                49.8207381,
+                40.371070599999996
+              ],
+              [
+                49.8207298,
+                40.371157999999994
+              ],
+              [
+                49.8207021,
+                40.37135919999999
+              ],
+              [
+                49.8207992,
+                40.37136699999999
+              ],
+              [
+                49.821203,
+                40.3713942
+              ],
+              [
+                49.8219746,
+                40.371435700000006
+              ],
+              [
+                49.82271,
+                40.3714884
+              ],
+              [
+                49.823364,
+                40.37153450000001
+              ],
+              [
+                49.823497,
+                40.3715439
+              ],
+              [
+                49.8234884,
+                40.3715899
+              ],
+              [
+                49.823378,
+                40.37217819999999
+              ],
+              [
+                49.8233449,
+                40.372364399999995
+              ],
+              [
+                49.8233347,
+                40.37246249999999
+              ],
+              [
+                49.8233384,
+                40.3725209
+              ],
+              [
+                49.8233622,
+                40.3725631
+              ],
+              [
+                49.8233943,
+                40.37258560000001
+              ],
+              [
+                49.823439,
+                40.372606
+              ],
+              [
+                49.823807,
+                40.37268319999998
+              ],
+              [
+                49.824277,
+                40.372808199999994
+              ],
+              [
+                49.8243889,
+                40.3728411
+              ],
+              [
+                49.8244394,
+                40.372364
+              ],
+              [
+                49.8245913,
+                40.3716344
+              ],
+              [
+                49.8246318,
+                40.371547299999996
+              ],
+              [
+                49.8246852,
+                40.3714872
+              ],
+              [
+                49.8247613,
+                40.3714391
+              ],
+              [
+                49.8248581,
+                40.3714135
+              ],
+              [
+                49.8249514,
+                40.3714128
+              ],
+              [
+                49.825033,
+                40.371427299999986
+              ],
+              [
+                49.8251315,
+                40.3714774
+              ],
+              [
+                49.825193,
+                40.3715388
+              ],
+              [
+                49.8252751,
+                40.37167120000001
+              ],
+              [
+                49.8254359,
+                40.3719269
+              ],
+              [
+                49.8254855,
+                40.372084499999985
+              ],
+              [
+                49.8255337,
+                40.3722769
+              ],
+              [
+                49.8255606,
+                40.37243939999999
+              ],
+              [
+                49.8255723,
+                40.3726044
+              ],
+              [
+                49.8255743,
+                40.37270410000001
+              ],
+              [
+                49.8255667,
+                40.372813799999996
+              ],
+              [
+                49.8255609,
+                40.37288070000001
+              ],
+              [
+                49.8255488,
+                40.3730188
+              ],
+              [
+                49.82551000000001,
+                40.37325380000001
+              ],
+              [
+                49.8255121,
+                40.3736146
+              ],
+              [
+                49.8255272,
+                40.37369519999999
+              ],
+              [
+                49.8255651,
+                40.3737554
+              ],
+              [
+                49.8256349,
+                40.3737884
+              ],
+              [
+                49.8257299,
+                40.3738108
+              ],
+              [
+                49.8263252,
+                40.3738897
+              ],
+              [
+                49.8270325,
+                40.37398989999999
+              ],
+              [
+                49.8278783,
+                40.3741113
+              ],
+              [
+                49.8280379,
+                40.3741386
+              ],
+              [
+                49.8282715,
+                40.3741804
+              ],
+              [
+                49.8284692,
+                40.37421729999999
+              ],
+              [
+                49.8287091,
+                40.3742681
+              ],
+              [
+                49.8289847,
+                40.374335800000004
+              ],
+              [
+                49.8292848,
+                40.37441330000001
+              ],
+              [
+                49.82938730000001,
+                40.3744392
+              ],
+              [
+                49.8298314,
+                40.374555799999996
+              ],
+              [
+                49.8305447,
+                40.3747317
+              ],
+              [
+                49.8305955,
+                40.374744699999994
+              ],
+              [
+                49.8310229,
+                40.37484829999998
+              ],
+              [
+                49.8314289,
+                40.374943099999996
+              ],
+              [
+                49.8315576,
+                40.37497129999999
+              ],
+              [
+                49.8316569,
+                40.3749881
+              ],
+              [
+                49.8317579,
+                40.3750008
+              ],
+              [
+                49.8319379,
+                40.37501869999999
+              ],
+              [
+                49.8321779,
+                40.37503869999999
+              ],
+              [
+                49.8330474,
+                40.375109900000005
+              ],
+              [
+                49.8333542,
+                40.3751404
+              ],
+              [
+                49.8334305,
+                40.3751536
+              ],
+              [
+                49.8334989,
+                40.375169500000005
+              ],
+              [
+                49.8336558,
+                40.375208300000004
+              ],
+              [
+                49.8339756,
+                40.37529380000001
+              ],
+              [
+                49.8395073,
+                40.3767855
+              ],
+              [
+                49.8399794,
+                40.37692299999999
+              ],
+              [
+                49.8405581,
+                40.377071099999995
+              ],
+              [
+                49.8406267,
+                40.37708810000001
+              ],
+              [
+                49.8407933,
+                40.3771273
+              ],
+              [
+                49.8408274,
+                40.3771431
+              ],
+              [
+                49.8408455,
+                40.377153299999996
+              ],
+              [
+                49.8408609,
+                40.377167099999994
+              ],
+              [
+                49.8408683,
+                40.377179600000005
+              ],
+              [
+                49.8408716,
+                40.3771906
+              ],
+              [
+                49.8408696,
+                40.37720869999999
+              ],
+              [
+                49.8408649,
+                40.377227099999985
+              ],
+              [
+                49.8408534,
+                40.37725999999999
+              ],
+              [
+                49.8406291,
+                40.37782239999999
+              ],
+              [
+                49.8405578,
+                40.37800169999999
+              ],
+              [
+                49.8405312,
+                40.378064699999996
+              ],
+              [
+                49.8404757,
+                40.3782034
+              ],
+              [
+                49.8402311,
+                40.37882689999999
+              ],
+              [
+                49.8402171,
+                40.37886340000001
+              ],
+              [
+                49.8401913,
+                40.378928099999996
+              ],
+              [
+                49.8417842,
+                40.3793102
+              ],
+              [
+                49.8418856,
+                40.37933390000001
+              ],
+              [
+                49.8433509,
+                40.37970219999998
+              ],
+              [
+                49.8434727,
+                40.379732000000004
+              ],
+              [
+                49.8438423,
+                40.379822399999995
+              ],
+              [
+                49.843937,
+                40.37984550000001
+              ],
+              [
+                49.8440581,
+                40.37987479999999
+              ],
+              [
+                49.8441748,
+                40.379903399999996
+              ],
+              [
+                49.84548240000001,
+                40.38023990000001
+              ],
+              [
+                49.8467736,
+                40.380575099999994
+              ],
+              [
+                49.8468575,
+                40.3805991
+              ],
+              [
+                49.8468763,
+                40.38054499999999
+              ],
+              [
+                49.8471896,
+                40.379837699999996
+              ],
+              [
+                49.8472268,
+                40.379758900000006
+              ],
+              [
+                49.847328,
+                40.37954680000001
+              ],
+              [
+                49.847553,
+                40.3790701
+              ],
+              [
+                49.84766,
+                40.379098500000005
+              ],
+              [
+                49.84855956727981,
+                40.37933688034995
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "bus",
+          "pattern_id": "M1_A",
+          "provenance": [
+            {
+              "evidence": "Complete CONSTRUCTED model cycle only; coverage=full does not verify official M-route coverage. A/B service suffix means design headway 6/9 minutes, independent of pattern direction. Both directed patterns included. Speed transferred as arithmetic mean of actual curated SG_R2/SG_R14 calibrated speeds [24.277458329768773, 24.34067887065056] km/h; dwell=25 s at intermediate stops only; full-cycle layover=2*P5=10.0 min. No verified express platforms/street routes. Grade assumptions and uncertain bus access retained.",
+              "source": "Supplied m_stops_directed.csv and immutable C4 road model",
+              "source_date": null,
+              "source_id": "m:service:SVC_M1_A",
+              "status": "assumption",
+              "synthetic": false
+            },
+            {
+              "evidence": "Published forward stop order supplied by Ali. Coordinates approximate; street path and segment_m are assumed/modelled shortest DISTANCE on bundle bus-eligible directed roads, busways retained. B solved independently, no coordinate shift. Grade transitions and bus permissions remain uncertain; not an official street route.",
+              "source": "Supplied m_stops_directed.csv and immutable C4 road model",
+              "source_date": null,
+              "source_id": "m:pattern:M1_A",
+              "status": "modelled",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 10.10392672977227,
+          "route_id": "SVC_M1_A",
+          "to_id": "state:120338",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.0
+        },
+        {
+          "alight_stop_id": "M_28MAY_NMM",
+          "board_stop_id": "M_28MAY_NMM",
+          "from_id": "state:120338",
+          "geometry": {
+            "coordinates": [
+              49.848521,
+              40.379422
+            ],
+            "type": "Point"
+          },
+          "mode": "bus",
+          "pattern_id": "M1_A",
+          "provenance": [
+            {
+              "evidence": "Complete CONSTRUCTED model cycle only; coverage=full does not verify official M-route coverage. A/B service suffix means design headway 6/9 minutes, independent of pattern direction. Both directed patterns included. Speed transferred as arithmetic mean of actual curated SG_R2/SG_R14 calibrated speeds [24.277458329768773, 24.34067887065056] km/h; dwell=25 s at intermediate stops only; full-cycle layover=2*P5=10.0 min. No verified express platforms/street routes. Grade assumptions and uncertain bus access retained.",
+              "source": "Supplied m_stops_directed.csv and immutable C4 road model",
+              "source_date": null,
+              "source_id": "m:service:SVC_M1_A",
+              "status": "assumption",
+              "synthetic": false
+            },
+            {
+              "evidence": "Approximate ordinary-stop location, not a verified express platform. Original string fields and Ali notes: [{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M1\",\"lon\":\"49.848521\",\"notes\":\"\",\"order_status\":\"published\",\"point_id\":\"P04\",\"seq\":\"2\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M1\",\"lon\":\"49.848521\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"assumption\",\"point_id\":\"P04\",\"seq\":\"1\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M2\",\"lon\":\"49.848521\",\"notes\":\"\",\"order_status\":\"published\",\"point_id\":\"P04\",\"seq\":\"3\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M2\",\"lon\":\"49.848521\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"assumption\",\"point_id\":\"P04\",\"seq\":\"1\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M3\",\"lon\":\"49.848521\",\"notes\":\"\",\"order_status\":\"published\",\"point_id\":\"P04\",\"seq\":\"3\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M3\",\"lon\":\"49.848521\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"assumption\",\"point_id\":\"P04\",\"seq\":\"1\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"}]",
+              "source": "Supplied m_stops_directed.csv and immutable C4 road model",
+              "source_date": null,
+              "source_id": "m:stop:M_28MAY_NMM",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": "SVC_M1_A",
+          "to_id": "state:120334",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.0
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:120334",
+          "geometry": {
+            "coordinates": [
+              [
+                49.848521,
+                40.379422
+              ],
+              [
+                49.84851834003779,
+                40.37942283028424
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Approximate ordinary-stop location, not a verified express platform. Original string fields and Ali notes: [{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M1\",\"lon\":\"49.848521\",\"notes\":\"\",\"order_status\":\"published\",\"point_id\":\"P04\",\"seq\":\"2\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M1\",\"lon\":\"49.848521\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"assumption\",\"point_id\":\"P04\",\"seq\":\"1\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M2\",\"lon\":\"49.848521\",\"notes\":\"\",\"order_status\":\"published\",\"point_id\":\"P04\",\"seq\":\"3\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M2\",\"lon\":\"49.848521\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"assumption\",\"point_id\":\"P04\",\"seq\":\"1\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"A\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M3\",\"lon\":\"49.848521\",\"notes\":\"\",\"order_status\":\"published\",\"point_id\":\"P04\",\"seq\":\"3\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"},{\"checked_by\":\"Ali\",\"coord_status\":\"approximate\",\"direction\":\"B\",\"google_stop_id\":\"\",\"lat\":\"40.379422\",\"line\":\"M3\",\"lon\":\"49.848521\",\"notes\":\"A = AYNA official order; B = reverse (not published)\",\"order_status\":\"assumption\",\"point_id\":\"P04\",\"seq\":\"1\",\"stop_key\":\"M_28MAY_NMM\",\"stop_name\":\"28 May NMM\"}]",
+              "source": "Supplied m_stops_directed.csv and immutable C4 road model",
+              "source_date": null,
+              "source_id": "m:stop:M_28MAY_NMM",
+              "status": "assumption",
+              "synthetic": false
+            },
+            {
+              "evidence": "Straight pedestrian access assumed; snap_m=0.24390437957884198; source grade topology retained; not verified pedestrian access.",
+              "source": "Nearest metric walk segment; bidirectional pedestrian connector",
+              "source_date": null,
+              "source_id": "prebuilt-access:M_28MAY_NMM",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:120332",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.003056445859383984
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:120332",
+          "geometry": {
+            "coordinates": [
+              [
+                49.84851834003779,
+                40.37942283028424
+              ],
+              [
+                49.8485591,
+                40.3794992
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:116567",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.11474739436977412
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:116567",
+          "geometry": {
+            "coordinates": [
+              [
+                49.8485591,
+                40.3794992
+              ],
+              [
+                49.8486008,
+                40.3795773
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:102726",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.11735382616377488
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:102726",
+          "geometry": {
+            "coordinates": [
+              [
+                49.8486008,
+                40.3795773
+              ],
+              [
+                49.8485597,
+                40.37958290000001
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:102725",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.04441275987366031
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:102725",
+          "geometry": {
+            "coordinates": [
+              [
+                49.8485597,
+                40.37958290000001
+              ],
+              [
+                49.8485419,
+                40.379628299999986
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:113174",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.06593422052587672
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:113174",
+          "geometry": {
+            "coordinates": [
+              [
+                49.8485419,
+                40.379628299999986
+              ],
+              [
+                49.8487566,
+                40.3796632
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:102743",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.23351098491276154
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:102743",
+          "geometry": {
+            "coordinates": [
+              [
+                49.8487566,
+                40.3796632
+              ],
+              [
+                49.84883865704487,
+                40.379715950995966
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:118351",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.1140421145858125
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:118351",
+          "geometry": {
+            "coordinates": [
+              [
+                49.84883865704487,
+                40.379715950995966
+              ],
+              [
+                49.848843,
+                40.37971199999999
+              ]
+            ],
+            "type": "LineString"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "state:118435",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.007180222677433012
+        },
+        {
+          "alight_stop_id": null,
+          "board_stop_id": null,
+          "from_id": "state:118435",
+          "geometry": {
+            "coordinates": [
+              49.848843,
+              40.37971199999999
+            ],
+            "type": "Point"
+          },
+          "mode": "walk",
+          "pattern_id": null,
+          "provenance": [
+            {
+              "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+              "source": "immutable C4 bundle + explicit routing scenario",
+              "source_date": null,
+              "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+              "status": "assumption",
+              "synthetic": false
+            }
+          ],
+          "ride_min": 0.0,
+          "route_id": null,
+          "to_id": "destination:metro_exit:44",
+          "transfer_min": 0.0,
+          "wait_min": 0.0,
+          "walk_min": 0.0
+        }
+      ],
+      "model_version": "c4-alpha-1@9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066+prebuilt@42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a",
+      "od_id": "od:P:5dda086be87a08deb4e644eaf16ea3601eb67ab04cfebd25d37c4ab4132c3e25",
+      "od_set_id": "fixed_od_v1@10c1b58f1d704cec25b11936da32c2c09bc995323e8a4083fd0bd46f50286ac8",
+      "origin_id": "origin:metro_exit:42",
+      "profile": "P",
+      "provenance": [
+        {
+          "evidence": "Published/curated geometry; calibrated or assumed timing and access; see C34_ADAPTERS.md; bus motion divided by speed_factor; board wait=headway/2; dwell and non-bus costs unchanged; {\"active_services\":[\"SVC_M1_A\"],\"headway_min\":{\"SG_R14\":5.0,\"SG_R2\":7.5},\"speed_factor\":1.0,\"supplement_hash\":\"42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a\",\"topology\":\"P_disrupted\"}",
+          "source": "immutable C4 bundle + explicit routing scenario",
+          "source_date": null,
+          "source_id": "service-stress:cce694d6251b3430af4398a369726c427c6c6663ad166f0d8438b12022c5ef49",
+          "status": "assumption",
+          "synthetic": false
+        }
+      ],
+      "state": "mitigated",
+      "status": "reachable",
+      "total_min": 14.245307454077144,
+      "warnings": [
+        "Parking availability is assumed from source-listed points.",
+        "Grid access uses assumed straight walking/pushing connections.",
+        "Road and metro endpoint grade transitions include assumptions.",
+        "Route 14 stop 105 has unresolved shape alignment.",
+        "Metro access and interchange geometry is schematic.",
+        "Assumed straight grid walking/pushing access, road/metro grade transitions and parking operation; route 14 stop 105 alignment unresolved; metro entry/interchange geometry schematic.",
+        "C5_PHASE2: explicit bus stress/activation; prebuilt route_id identifies service variant; synthetic/assumed evidence is not observed.",
+        "GEOMETRY_GAPS"
+      ]
+    },
+    "request": {
+      "candidate_ids": [],
+      "cap_min": 120.0,
+      "closure_id": "metro_link:green:670216816:5188836356",
+      "contract_version": "1.0",
+      "headway_factor_by_group": null,
+      "model_version": "c4-alpha-1@9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066+prebuilt@42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a",
+      "od_set_id": "fixed_od_v1@10c1b58f1d704cec25b11936da32c2c09bc995323e8a4083fd0bd46f50286ac8",
+      "patches": [
+        {
+          "headway_min": null,
+          "kind": "activate_service",
+          "target_id": "SVC_M1_A"
+        }
+      ],
+      "primary_t_min": 45,
+      "profile": "P",
+      "speed_factor": 1.0,
+      "state": "mitigated",
+      "thresholds_min": [
+        40,
+        45,
+        50
+      ]
+    }
+  },
+  "all_bundle_payload_hashes_unchanged": true,
+  "baseline_parity": {
+    "B_disrupted": {
+      "capped_time_sum_min": 74039.0312696655,
+      "max_error_min": 1.4210854715202004e-14,
+      "rows": 2718,
+      "within_counts": [
+        2406,
+        2506,
+        2511
+      ]
+    },
+    "B_normal": {
+      "capped_time_sum_min": 73577.91477922363,
+      "max_error_min": 1.4210854715202004e-14,
+      "rows": 2718,
+      "within_counts": [
+        2406,
+        2506,
+        2511
+      ]
+    },
+    "P_disrupted": {
+      "capped_time_sum_min": 128583.2876033397,
+      "max_error_min": 1.4210854715202004e-14,
+      "rows": 2718,
+      "within_counts": [
+        636,
+        1191,
+        1697
+      ]
+    },
+    "P_normal": {
+      "capped_time_sum_min": 94375.40594217333,
+      "max_error_min": 7.105427357601002e-15,
+      "rows": 2718,
+      "within_counts": [
+        2060,
+        2339,
+        2496
+      ]
+    }
+  },
+  "bundle_manifest_sha256": "a372e5ade6df97dbf99228306ce79bc2e1ff3231bce41a5c32e29b29d4dcd3f9",
+  "catalog_ids": [
+    "SVC_M1_A",
+    "SVC_M1_B",
+    "SVC_M2_A",
+    "SVC_M2_B",
+    "SVC_M3_A",
+    "SVC_M3_B",
+    "SVC_M5_A",
+    "SVC_M5_B",
+    "SVC_M6_A",
+    "SVC_M6_B"
+  ],
+  "deterministic_byte_comparison_files": [
+    "build_report.json",
+    "config/limits.yaml",
+    "config/prebuilt_services/assets.json",
+    "config/prebuilt_services/manifest.json",
+    "source_stops.csv"
+  ],
+  "model_version": "c4-alpha-1@9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066+prebuilt@42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a",
+  "pyproj": "3.8.0",
+  "shapely": "2.2.0",
+  "smoke": {
+    "SVC_M1_A": {
+      "activated_journey_min": 14.245307454077144,
+      "capped_time_sum_min": 122898.28981312228,
+      "design_waits_min": [
+        3.0
+      ],
+      "destination_id": "destination:metro_exit:44",
+      "evaluation_od_min": 14.245307454077144,
+      "improved_od_count": 1273,
+      "leg_sum_min": 14.245307454077144,
+      "origin_id": "origin:metro_exit:42",
+      "within_counts": {
+        "40": 868,
+        "45": 1391,
+        "50": 1906
+      }
+    },
+    "SVC_M2_A": {
+      "activated_journey_min": 10.061901862409515,
+      "capped_time_sum_min": 118525.2398263192,
+      "design_waits_min": [
+        3.0
+      ],
+      "destination_id": "destination:metro_exit:44",
+      "evaluation_od_min": 10.061901862409515,
+      "improved_od_count": 1759,
+      "leg_sum_min": 10.061901862409517,
+      "origin_id": "origin:metro_exit:43",
+      "within_counts": {
+        "40": 992,
+        "45": 1658,
+        "50": 2113
+      }
+    },
+    "SVC_M3_A": {
+      "activated_journey_min": 10.061901862409515,
+      "capped_time_sum_min": 117963.46490693814,
+      "design_waits_min": [
+        3.0
+      ],
+      "destination_id": "destination:metro_exit:44",
+      "evaluation_od_min": 10.061901862409515,
+      "improved_od_count": 1780,
+      "leg_sum_min": 10.061901862409517,
+      "origin_id": "origin:metro_exit:43",
+      "within_counts": {
+        "40": 1022,
+        "45": 1674,
+        "50": 2100
+      }
+    },
+    "SVC_M5_A": {
+      "activated_journey_min": 18.339082673187516,
+      "capped_time_sum_min": 112211.41779617502,
+      "design_waits_min": [
+        3.0
+      ],
+      "destination_id": "destination:metro_exit:49",
+      "evaluation_od_min": 18.339082673187516,
+      "improved_od_count": 1347,
+      "leg_sum_min": 18.339082673187516,
+      "origin_id": "origin:grid:32639:1330:14911",
+      "within_counts": {
+        "40": 1306,
+        "45": 1941,
+        "50": 2286
+      }
+    },
+    "SVC_M6_A": {
+      "activated_journey_min": 19.440737199464177,
+      "capped_time_sum_min": 119171.11512471073,
+      "design_waits_min": [
+        3.0
+      ],
+      "destination_id": "destination:metro_exit:49",
+      "evaluation_od_min": 19.440737199464177,
+      "improved_od_count": 1135,
+      "leg_sum_min": 19.440737199464174,
+      "origin_id": "origin:metro_exit:42",
+      "within_counts": {
+        "40": 986,
+        "45": 1589,
+        "50": 2085
+      }
+    }
+  },
+  "supplement_hash": "42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a",
+  "units": {
+    "base_headway_min": "minutes",
+    "dwell_s": "seconds",
+    "full_cycle_km": "kilometres",
+    "layover_min": "minutes",
+    "segment_m": "metres",
+    "speed_kmh": "km/h"
+  }
+}
