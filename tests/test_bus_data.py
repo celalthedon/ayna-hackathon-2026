@@ -142,6 +142,9 @@ def test_headways(services):
 
 RAW_ASSUMPTIONS = CURATED.parent / "raw" / "ayna_bus" / "phase1" / "templates" / "assumptions.csv"
 HEADWAY_PARAM = {"2": "P1", "14": "P2"}
+APPLIES_TO_CHANGES = {"P6": {"applies_to": "metro_all_adjacent_stations"},
+                      "P8": {"applies_to": "metro_platform_street_both_directions"}}
+ADDED_PARAMS = ("P19", "P20")
 RAW_ASSUMPTIONS_P16_P18 = CURATED.parent / "raw" / "ayna_bus" / "phase2" / "templates" / "assumptions_P16_P18.csv"
 
 
@@ -171,10 +174,12 @@ def test_curated_assumptions_keep_other_rows_unchanged(assumptions):
     for path in (RAW_ASSUMPTIONS, RAW_ASSUMPTIONS_P16_P18):
         with open(path, newline="", encoding="utf-8-sig") as f:
             raw.update({r["param_id"]: r for r in csv.DictReader(f)})
-    assert set(assumptions) == set(raw)
+    assert set(assumptions) == set(raw) | set(ADDED_PARAMS)
     for pid, r in raw.items():
-        if pid not in HEADWAY_PARAM.values():
-            assert {k: assumptions[pid][k] for k in r} == r, pid
+        if pid in HEADWAY_PARAM.values():
+            continue
+        changed = APPLIES_TO_CHANGES.get(pid, {})
+        assert {k: assumptions[pid][k] for k in r if k not in changed} == {k: v for k, v in r.items() if k not in changed}, pid
 
 
 def test_service_headways_come_from_curated_assumptions(services, assumptions):
@@ -217,8 +222,8 @@ def test_source_provenance_tracked():
         assert curated["zip_sha256"] == json.loads(raw_path.read_text(encoding="utf-8"))["zip_sha256"]
 
 
-def test_assumptions_p1_to_p18_complete(assumptions):
-    assert [f"P{i}" for i in range(1, 19)] == sorted(assumptions, key=lambda p: int(p[1:]))
+def test_assumptions_p1_to_p20_complete(assumptions):
+    assert [f"P{i}" for i in range(1, 21)] == sorted(assumptions, key=lambda p: int(p[1:]))
     for pid, r in assumptions.items():
         assert r["status"].strip(), pid
         try:
@@ -226,3 +231,28 @@ def test_assumptions_p1_to_p18_complete(assumptions):
         except ValueError:
             continue  # non-numeric parameter (P15: yes/no)
         assert low <= default <= high, pid
+
+
+def test_p6_p8_scope_decisions(assumptions):
+    p6, p8 = assumptions["P6"], assumptions["P8"]
+    assert p6["applies_to"] == "metro_all_adjacent_stations"
+    assert "applied to all lines; no per-line or per-station measurement (decision Ali 2026-10-17)" in p6["notes"]
+    assert p8["applies_to"] == "metro_platform_street_both_directions"
+    assert "entry assumed symmetric to exit; train waiting (headway/2) is added separately" in p8["notes"]
+    assert (p6["value_low"], p6["value_default"], p6["value_high"]) == ("1.5", "2.5", "4")
+    assert (p8["value_low"], p8["value_default"], p8["value_high"]) == ("2", "4", "7")
+
+
+@pytest.mark.parametrize("pid, value, applies_to, evidence", [
+    ("P19", 2.5, "metro_red", ["closure_measures.csv C34"]),
+    ("P20", 8, "metro_purple", ["official_facts.csv F2", "closure_measures.csv C36"]),
+])
+def test_metro_headways_p19_p20(assumptions, pid, value, applies_to, evidence):
+    r = assumptions[pid]
+    assert (float(r["value_low"]), float(r["value_default"]), float(r["value_high"])) == (value, value, value)
+    assert r["unit"] == "min" and r["applies_to"] == applies_to
+    assert r["status"] == "published" and r["filled_by"] == "Ali"
+    assert r["source_url"] == "https://metro.gov.az/route-change"
+    assert r["justification"] == "official construction-period regime; no range published"
+    for e in evidence:
+        assert e in r["notes"]
