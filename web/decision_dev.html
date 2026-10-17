@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Decision panels (dev)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 16px; max-width: 1100px; margin-inline: auto; background: Canvas; color: CanvasText;
+           font: 14px/1.45 system-ui, sans-serif; }
+    .dev { border: 1px dashed GrayText; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="dev">
+    <strong>Dev page: synthetic test fixture, not a city result.</strong>
+    It stands in for the main app state.
+    <button id="change-config">Simulate config change</button>
+    <button id="toggle-profile">Toggle app profile (now <span id="profile">P</span>)</button>
+  </div>
+  <div id="decision"></div>
+
+  <script src="/static/decision/decision_panel.js"></script>
+  <script src="/static/decision/stress_panel.js"></script>
+  <script src="/static/decision/co2_panel.js"></script>
+  <script>
+    const appState = { configHash: null, profile: "P" };
+    const listeners = new Set();
+    const notify = () => listeners.forEach((f) => f(appState));
+
+    fetch("/decision/state").then((r) => r.json()).then((s) => {
+      appState.configHash = s.config_hash;
+      window.CityPilotDecision.mount(document.getElementById("decision"), {
+        getAppState: () => appState,
+        onStateChange: (callback) => { listeners.add(callback); return () => listeners.delete(callback); },
+      });
+    });
+    document.getElementById("change-config").onclick = () => { appState.configHash = "changed-" + Date.now(); notify(); };
+    document.getElementById("toggle-profile").onclick = () => {
+      appState.profile = appState.profile === "P" ? "B" : "P";
+      document.getElementById("profile").textContent = appState.profile;
+      notify();
+    };
+  </script>
+</body>
+</html>
