@@ -47,7 +47,6 @@ from citypilot.decision_engine import (
 )
 
 PROFILES = ("P", "B")
-MAX_ACTIONS = 4
 OBJECTIVE_NOT_COMMITTED = "objective not committed"
 OBJECTIVE_OTHER_MODEL = "objective decided for another model"
 
@@ -83,12 +82,14 @@ class DecisionBackend:
     resources_for: Callable[[Scenario], Callable[[tuple[str, ...]], ResourceResult]]
     evaluator_for: Callable[[str, Scenario], Callable[[RoutingRequest], EvaluationResult]]  # (profile, scenario)
     cache_dir: Path
+    N_a_max: int  # slider / enumeration maximum; config/limits.yaml N_a_max
     reference_package_ids: tuple[str, ...] | None = None  # the AYNA real response, from the catalog
     stress_grid: StressGrid | None = None
     co2: Co2Inputs | None = None
     od_car_distance_km: Mapping[str, OdCarDistance] | None = None  # OD table car_distance_km
     patches_for: Callable[[Scenario], Callable[[tuple[str, ...]], tuple[RoutingPatch, ...]]] = lambda scenario: no_patches
     requires_bike: frozenset[str] = frozenset()
+    findings: Mapping[str, str] | None = None  # per profile, e.g. from the precompute manifest; shown, not an error
 
     def __post_init__(self):
         if set(self.model_hashes) != set(PROFILES):
@@ -98,6 +99,10 @@ class DecisionBackend:
                 raise ValueError(f"model_hashes[{profile}] needs normal and disrupted, got {sorted(pair)}")
         if not self.objective_dirs:
             raise ValueError("objective_dirs is empty")
+        if isinstance(self.N_a_max, bool) or not isinstance(self.N_a_max, int) or self.N_a_max < 1:
+            raise ValueError(f"N_a_max must be an int >= 1, got {self.N_a_max!r}")
+        if self.limits.N_a_actions > self.N_a_max:
+            raise ValueError(f"default N_a_actions {self.limits.N_a_actions} exceeds N_a_max {self.N_a_max}")
 
 
 # --- request bodies (out of range -> 422) ---
@@ -105,7 +110,7 @@ class DecisionBackend:
 class OptimizeBody(BaseModel):
     B_h: float = Field(ge=0, le=70, description="bus-hour budget")
     K: float = Field(ge=0, le=3, description="new infrastructure km budget")
-    N_a: int = Field(ge=1, le=MAX_ACTIONS, description="maximum number of actions")
+    N_a: int = Field(ge=1, description="maximum number of actions; at most the backend's N_a_max")
     profile: Literal["P", "B"]
 
 
@@ -223,6 +228,11 @@ def _answers(result: EvaluationResult, request: RoutingRequest) -> bool:
     return True
 
 
+def cache_identity(config_hash: str, input_hashes: Mapping[str, str]) -> dict:
+    """Model identity in the cache key; the router and the precompute must build it the same way."""
+    return {"config_hash": config_hash, "input_hashes": dict(sorted(input_hashes.items()))}
+
+
 class EvaluationCache:
     """Evaluates each canonical request once and keeps the result on disk.
 
@@ -301,7 +311,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
     router = APIRouter(prefix="/decision", tags=["decision"])
     caches: dict[str, EvaluationCache] = {}
 
-    model_identity = {"config_hash": backend.config_hash, "input_hashes": dict(sorted(backend.input_hashes.items()))}
+    model_identity = cache_identity(backend.config_hash, backend.input_hashes)
 
     def cache_for(profile: str, scenario: Scenario) -> EvaluationCache:
         name = _canonical({"profile": profile, "scenario": _evaluator_scenario_key(scenario)})
@@ -325,10 +335,10 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         )
 
     def evaluator(profile: str, scenario: Scenario):
-        """Cached evaluator; on first use it evaluates every valid package with <= MAX_ACTIONS once,
+        """Cached evaluator; on first use it evaluates every valid package with <= N_a_max actions once,
         so later limit changes only re-filter and re-rank."""
         cache = cache_for(profile, scenario)
-        widest = problem(scenario, Limits(backend.limits.B_h_bus_hours, backend.limits.K_new_infra_km, MAX_ACTIONS,
+        widest = problem(scenario, Limits(backend.limits.B_h_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
                                           backend.limits.max_exact_packages), profile)  # enumeration uses N_a only
         packages = list(enumerate_packages(widest))
         if len(packages) <= backend.limits.max_exact_packages:
@@ -356,11 +366,16 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return jsonable(result)
 
     def limits_from(body: OptimizeBody) -> Limits:
+        if body.N_a > backend.N_a_max:
+            raise HTTPException(422, f"N_a {body.N_a} exceeds N_a_max {backend.N_a_max}")
         return Limits(body.B_h, body.K, body.N_a, backend.limits.max_exact_packages)
 
     def run_optimize(limits: Limits, profile: str) -> OptimizationResult:
         scenario = default_scenario()
         return optimize(problem(scenario, limits, profile), evaluator(profile, scenario))
+
+    def finding(profile: str) -> str | None:
+        return (backend.findings or {}).get(profile)
 
     def unprocessable(e: Exception) -> HTTPException:
         return HTTPException(422, str(e))
@@ -380,6 +395,8 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         co2 = backend.co2
         return stamp({
             "limits": jsonable(backend.limits),
+            "N_a_max": backend.N_a_max,
+            "findings": dict(backend.findings or {}),
             "objective": objective,
             "input_hashes": dict(backend.input_hashes),
             "model_hashes": {p: dict(pair) for p, pair in backend.model_hashes.items()},
@@ -402,7 +419,8 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             result = run_optimize(limits_from(body), body.profile)
         except ValueError as e:
             raise unprocessable(e)
-        return stamp(optimization_json(result) | {"limits": jsonable(limits_from(body))}, body, "optimize")
+        return stamp(optimization_json(result) | {"limits": jsonable(limits_from(body)),
+                                                  "finding": finding(body.profile)}, body, "optimize")
 
     @router.post("/compare_ayna")
     def post_compare(body: ProfileBody) -> dict:
@@ -416,7 +434,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             reference_resources = reference_problem.resources(tuple(sorted(reference_ids)))
             if reference_resources.added_bus_hours is None:
                 raise ValueError(f"reference package {reference_ids}: bus-hours unknown")
-            limits = Limits(reference_resources.added_bus_hours, backend.limits.K_new_infra_km, MAX_ACTIONS,
+            limits = Limits(reference_resources.added_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
                             backend.limits.max_exact_packages)
             result = optimize(problem(scenario, limits, body.profile), evaluator(body.profile, scenario))
             ref_eval = evaluator(body.profile, scenario)(build_request(reference_problem, reference_ids))

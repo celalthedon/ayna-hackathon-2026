@@ -127,6 +127,7 @@ def fixture_stress_backend(objective_dir: Path, cache_dir: Path, reference=None,
         resources_for=lambda scenario: make_catalog_resources(candidates, catalog, scenario),
         evaluator_for=synthetic_evaluator_for(fx),
         cache_dir=Path(cache_dir),
+        N_a_max=4,  # fixture setting (the real value comes from config/limits.yaml)
         reference_package_ids=reference,
         stress_grid=StressGrid(fx["grid"]["speed_levels_kmh"], fx["grid"]["headway_levels_min"]),
         co2=Co2Inputs(candidates, catalog, bus_factor, car_factor,

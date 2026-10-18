@@ -323,7 +323,7 @@ def test_catalog_resources_wrapper(tmp_path):
 
 def test_limits_yaml():
     limits = load_limits(ROOT / "config" / "limits.yaml")
-    assert limits.max_exact_packages == 1024
+    assert limits.max_exact_packages == 3000
     assert (limits.B_h_bus_hours, limits.K_new_infra_km, limits.N_a_actions) == (30.0, 2.0, 3)
 
 

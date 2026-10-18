@@ -32,6 +32,7 @@
   .cpd .status { padding: 6px 10px; border-radius: 6px; margin: 6px 0; }
   .cpd .status.error { background: var(--cpd-bad-bg); color: var(--cpd-bad); }
   .cpd .status.outdated, .cpd .status.warn { background: var(--cpd-warn-bg); }
+  .cpd .finding { padding: 6px 10px; border-radius: 6px; margin: 6px 0; border-left: 3px solid var(--cpd-accent); }
   .cpd .pkg { font-weight: 600; }
   .cpd table { border-collapse: collapse; width: 100%; }
   .cpd th, .cpd td { border-bottom: 1px solid var(--cpd-line); padding: 4px 6px; text-align: left; vertical-align: top; }
@@ -181,17 +182,20 @@
         limitsLoaded = true;
         form.B_h = Math.min(70, s.limits.B_h_bus_hours);
         form.K = Math.min(3, s.limits.K_new_infra_km);
-        form.N_a = Math.min(4, Math.max(1, s.limits.N_a_actions));
+        form.N_a = Math.min(s.N_a_max, Math.max(1, s.limits.N_a_actions));
       }
       root.replaceChildren();
       root.appendChild(el("h3", {}, "Intervention packages"));
       const committed = s && s.objective[form.profile];
       const objective = committed ? (committed.value ? `${committed.value} (committed)` : committed.status) : "…";
       root.appendChild(el("div", { class: "muted" }, `Objective in use (profile ${form.profile}): ${objective}`));
+      const finding = s && s.findings && s.findings[form.profile];
+      if (finding) root.appendChild(el("div", { class: "finding" }, `Finding (profile ${form.profile}): ${finding}`));
       root.appendChild(el("div", { class: "row" },
         number("B_h", 0, 70, 0.5, "bus-hours"), number("K", 0, 3, 0.05, "km"),
         el("label", {}, "N_a", el("select", { onchange: (e) => { form.N_a = Number(e.target.value); } },
-          [1, 2, 3, 4].map((n) => el("option", { value: n, selected: n === form.N_a }, String(n))))),
+          Array.from({ length: s ? s.N_a_max : form.N_a }, (_, i) => i + 1)
+            .map((n) => el("option", { value: n, selected: n === form.N_a }, String(n))))),
         el("span", { role: "group", "aria-label": "profile" }, "profile ",
           ["P", "B"].map((p) => el("button", { "aria-pressed": form.profile === p ? "true" : "false",
             onclick: () => { form.profile = p; render(); } }, p))),

@@ -171,3 +171,53 @@ def real_catalog(catalog) -> tuple[dict[str, Candidate], tuple[tuple[str, ...], 
     the routing engine does not implement activate_link and the catalog has no links."""
     cuts, m = route_cut_candidates(catalog), m_service_candidates(catalog)
     return cuts | m, route_cut_exclusions(cuts) + m_service_exclusions(m)
+
+
+# --- precompute support ---
+
+def load_n_a_max(path: str | Path = LIMITS_PATH) -> int:
+    """N_a_max from config/limits.yaml: the largest N_a the API offers and the precompute enumerates."""
+    import yaml
+
+    with open(path) as f:
+        raw = yaml.safe_load(f) or {}
+    value = raw.get("N_a_max")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{path}: N_a_max must be an int >= 1, got {value!r}")
+    return value
+
+
+def real_input_hashes(model: Any) -> dict[str, str]:
+    """Bundle, OD and supplement identity of the loaded model (cache key and manifest)."""
+    hashes = {"bundle_hash": model["manifest"]["bundle_hash"], "od_hash": model["od"]["od_hash"]}
+    if model.get("supplement_hash"):
+        hashes["supplement_hash"] = model["supplement_hash"]
+    return hashes
+
+
+def design_only(candidates: Mapping[str, Candidate],
+                exclusions: tuple[tuple[str, ...], ...]) -> tuple[dict[str, Candidate], tuple[tuple[str, ...], ...]]:
+    """Drop the 9-min M variants (SVC_M*_B); groups left with one member are no longer exclusions."""
+    kept = {c: v for c, v in candidates.items() if not (c.startswith("SVC_M") and c.endswith("_B"))}
+    groups = tuple(g for g in (tuple(i for i in group if i in kept) for group in exclusions) if len(g) > 1)
+    return kept, groups
+
+
+def strongest_package(candidates: Mapping[str, Candidate], exclusions: tuple[tuple[str, ...], ...],
+                      catalog) -> tuple[str, ...]:
+    """The strongest variant of every exclusion group plus every ungrouped candidate: the deepest headway cut,
+    the shortest-headway service. Adding options never makes a trip longer, so if this package changes no
+    travel time, no smaller package can."""
+    services = {**catalog.service_groups, **catalog.prebuilt_services}
+
+    def strength(cid):
+        c = candidates[cid]
+        if c.kind == "headway_cut":
+            return c.pct
+        if c.kind == "activate_service":
+            return -services[c.target_id].base_headway_min
+        raise ValueError(f"{cid}: no strength order for kind {c.kind}")
+
+    grouped = {i for g in exclusions for i in g}
+    picked = [max(g, key=lambda i: (strength(i), i)) for g in exclusions]
+    return tuple(sorted(picked + [c for c in candidates if c not in grouped]))
