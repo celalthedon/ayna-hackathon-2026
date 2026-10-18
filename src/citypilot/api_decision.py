@@ -35,6 +35,7 @@ from citypilot.decision_engine import (
     StressGrid,
     StressSetup,
     build_request,
+    car_distance_coverage,
     co2_for_package,
     enumerate_packages,
     is_feasible,
@@ -741,12 +742,13 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             raise HTTPException(422, f"unknown candidate ids {sorted(unknown)}")
         car_trip_km, status, source = body.car_trip_km, "user", "user"
         try:
+            scenario = default_scenario()
+            evaluate = evaluator(body.profile, scenario)
+            p = problem(scenario, backend.limits, body.profile)
+            package_eval, no_action_eval = evaluate(build_request(p, body.package_ids)), evaluate(build_request(p, ()))
+            coverage = car_distance_coverage(package_eval, no_action_eval, backend.od_car_distance_km)
             if car_trip_km is None:
-                scenario = default_scenario()
-                evaluate = evaluator(body.profile, scenario)
-                p = problem(scenario, backend.limits, body.profile)
-                car_trip_km, source = mean_car_distance_km(evaluate(build_request(p, body.package_ids)),
-                                                           evaluate(build_request(p, ())), backend.od_car_distance_km)
+                car_trip_km, source = mean_car_distance_km(package_eval, no_action_eval, backend.od_car_distance_km)
                 status = None if car_trip_km is None else "modelled"
             r = co2_for_package(
                 [co2.candidates[c] for c in body.package_ids], co2.catalog, default_scenario(),
@@ -757,7 +759,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         except ValueError as e:
             raise unprocessable(e)
         return stamp(jsonable(r) | {"car_trip_km_source": source, "car_trip_km_status": status,
-                                    "factor_statuses": dict(co2.factor_statuses)},
+                                    "car_distance_coverage": coverage, "factor_statuses": dict(co2.factor_statuses)},
                      body, "co2")
 
     return router

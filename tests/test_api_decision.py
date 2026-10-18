@@ -361,3 +361,16 @@ def test_a_finding_for_another_model_or_catalog_is_never_shown(tmp_path, counter
     c = client_for(dataclasses.replace(four_action_backend(tmp_path, counter), findings={"B": f}))
     assert strict_json(c.get("/decision/state"))["findings"] == {}
     assert optimize(c, 24, profile="B").json()["finding"] is None
+
+
+def test_co2_coverage_then_break_even_from_the_entered_trip_length(tmp_path):
+    backend = fixture_stress_backend(write_objective(tmp_path / "objectives"), tmp_path / "cache",
+                                     od_car_distance_km={"OD1": 6.0, "OD2": None})
+    c = client_for(backend)
+    r = strict_json(c.post("/decision/co2", json={"package_ids": ["A", "C", "D"], "profile": "P"}))
+    assert r["status"] == "needs_car_trip_km" and r["break_even_trips"] is None
+    assert r["car_distance_coverage"] == {"restored": 7, "missing": 6, "by_reason": {"absent": 6}}
+    r = strict_json(c.post("/decision/co2", json={"package_ids": ["A", "C", "D"], "profile": "P", "car_trip_km": 6.0}))
+    assert r["status"] == "complete" and r["car_trip_km_status"] == "user" and r["car_trip_km"] == 6.0
+    assert r["break_even_trips"] == 510  # same as the modelled 6 km default
+    assert r["car_distance_coverage"]["missing"] == 6
