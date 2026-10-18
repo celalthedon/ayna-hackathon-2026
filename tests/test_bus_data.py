@@ -127,7 +127,7 @@ def test_statuses_and_inputs(services):
 
 
 def test_headways(services):
-    expected = {"2": (6, 7.5, 10, "published"), "14": (4.5, 5, 8, "assumption")}
+    expected = {"2": (6, 7.5, 10, "published"), "14": (4.5, 5, 11, "assumption")}
     for route, (lo, default, hi, status) in expected.items():
         s = services[route]
         got = (float(s["headway_low_min"]), float(s["headway_default_min"]), float(s["headway_high_min"]))
@@ -139,7 +139,7 @@ RAW_ASSUMPTIONS = CURATED.parent / "raw" / "ayna_bus" / "phase1" / "templates" /
 HEADWAY_PARAM = {"2": "P1", "14": "P2"}
 APPLIES_TO_CHANGES = {"P6": {"applies_to": "metro_all_adjacent_stations"},
                       "P8": {"applies_to": "metro_platform_street_both_directions"}}
-ADDED_PARAMS = ("P19", "P20")
+ADDED_PARAMS = ("P19", "P20", "P21")
 RAW_ASSUMPTIONS_P16_P18 = CURATED.parent / "raw" / "ayna_bus" / "phase2" / "templates" / "assumptions_P16_P18.csv"
 
 
@@ -151,7 +151,7 @@ def assumptions():
 def test_curated_p1_p2_replace_first_round_estimate(assumptions):
     expected = {
         "P1": ("6", "7.5", "10", "published", "2026-08-31"),
-        "P2": ("4.5", "5", "8", "assumption", "2025-10-01"),
+        "P2": ("4.5", "5", "11", "assumption", "2025-10-01"),
     }
     for pid, (lo, default, hi, status, date) in expected.items():
         r = assumptions[pid]
@@ -162,6 +162,19 @@ def test_curated_p1_p2_replace_first_round_estimate(assumptions):
         assert r["source_url"].startswith("https://")
     assert "oxu.az" in assumptions["P1"]["source_url"]
     assert "lot 333" in assumptions["P2"]["justification"].lower()
+
+
+def test_p2_high_raised_from_eta_observations(assumptions):
+    notes = assumptions["P2"]["notes"]
+    assert "previous value_high 8" in notes and "4.5-13 min" in notes and "not measured" in notes
+
+
+def test_p21_m_express_design_headway(assumptions):
+    r = assumptions["P21"]
+    assert (r["unit"], float(r["value_low"]), float(r["value_default"]), float(r["value_high"])) == ("min", 4, 6, 10)
+    assert r["applies_to"] == "M1 M2 M3 M5 M6" and r["status"] == "assumption" and r["filled_by"] == "Ali"
+    assert r["source_url"] == "data/raw/ayna_bus/m_research/" and r["source_date"] == "2026-08-04"
+    assert "AZERTAC 2026-08-04" in r["justification"] and "not human-verified" in r["notes"]
 
 
 def test_curated_assumptions_keep_other_rows_unchanged(assumptions):
@@ -229,8 +242,8 @@ def test_source_provenance_tracked():
         assert curated["zip_sha256"] == json.loads(raw_path.read_text(encoding="utf-8"))["zip_sha256"]
 
 
-def test_assumptions_p1_to_p20_complete(assumptions):
-    assert [f"P{i}" for i in range(1, 21)] == sorted(assumptions, key=lambda p: int(p[1:]))
+def test_assumptions_p1_to_p21_complete(assumptions):
+    assert [f"P{i}" for i in range(1, 22)] == sorted(assumptions, key=lambda p: int(p[1:]))
     for pid, r in assumptions.items():
         assert r["status"].strip(), pid
         try:
@@ -263,3 +276,14 @@ def test_metro_headways_p19_p20(assumptions, pid, value, applies_to, evidence):
     assert r["justification"] == "official construction-period regime; no range published"
     for e in evidence:
         assert e in r["notes"]
+
+
+def test_m_research_source_recorded():
+    curated = json.loads((CURATED / "SOURCE_ayna_bus.json").read_text(encoding="utf-8"))
+    (m,) = [s for s in curated["additional_sources"] if s["target"] == "data/raw/ayna_bus/m_research/"]
+    assert m["zip_file"] == "CityPilot_M_lines_research.zip" and len(m["zip_sha256"]) == 64
+    assert m["status"] == "AI research, not human-verified" and "P21" in m["used_by"]
+    folder = CURATED.parent / "raw" / "ayna_bus" / "m_research"
+    if folder.exists():  # raw data is local only (git-ignored)
+        import hashlib
+        assert {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in folder.iterdir()} == m["files_sha256"]
