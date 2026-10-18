@@ -154,3 +154,61 @@ def test_mismatched_file_is_re_evaluated_and_overwritten(tmp_path, damage):
     assert evaluate.calls == 2
     assert json.loads(path.read_text())["key"]["request"]["cap_min"] == 120.0
     assert json.loads(path.read_text())["result"]["cap_min"] == 120.0
+
+
+# --- every returned result passes result.validate_request(request) ---
+
+OTHER_HASH = "0" * 64
+TAMPER = {"model_version": "other-model", "config_hash": OTHER_HASH}
+
+
+@pytest.mark.parametrize("field", sorted(TAMPER))
+def test_tampered_disk_result_is_recomputed(tmp_path, field):
+    evaluate = Counting()
+    good = cache_with(tmp_path, evaluate).evaluate(request())
+    (path,) = (tmp_path / "evaluations").glob("*.json")
+    stored = json.loads(path.read_text())
+    stored["result"][field] = TAMPER[field]  # correct key, wrong identity inside
+    path.write_text(json.dumps(stored))
+    again = cache_with(tmp_path, evaluate).evaluate(request())
+    assert again == good and getattr(again, field) == getattr(good, field)
+    assert evaluate.calls == 2
+    assert json.loads(path.read_text())["result"][field] == getattr(good, field)  # overwritten
+
+
+@pytest.mark.parametrize("field", sorted(TAMPER))
+def test_tampered_ram_result_is_recomputed(tmp_path, field):
+    evaluate = Counting()
+    cache = cache_with(tmp_path, evaluate)
+    good = cache.evaluate(request())
+    (stem,) = cache.results
+    key, held = cache.results[stem]
+    cache.results[stem] = (key, dataclasses.replace(held, **{field: TAMPER[field]}))
+    (path,) = (tmp_path / "evaluations").glob("*.json")
+    path.unlink()  # force a recomputation, not a disk hit
+    assert cache.evaluate(request()) == good and evaluate.calls == 2
+    assert cache.lookup(request()) == good
+
+
+def test_ram_hit_is_validated_before_disk(tmp_path):
+    evaluate = Counting()
+    cache = cache_with(tmp_path, evaluate)
+    good = cache.evaluate(request())
+    (stem,) = cache.results
+    key, held = cache.results[stem]
+    cache.results[stem] = (key, dataclasses.replace(held, config_hash=OTHER_HASH))
+    assert cache.evaluate(request()) == good and evaluate.calls == 1  # valid disk entry replaces the RAM one
+
+
+@pytest.mark.parametrize("field", sorted(TAMPER))
+def test_fresh_mismatch_raises_and_is_never_cached(tmp_path, field):
+    from citypilot.contracts import ContractError
+
+    def wrong(req):
+        return dataclasses.replace(make_fixture_evaluator(FIXTURE)(req), **{field: TAMPER[field]})
+
+    cache = cache_with(tmp_path, wrong)
+    with pytest.raises(ContractError, match=f"Request/result mismatch: {field}"):
+        cache.evaluate(request())
+    assert not (tmp_path / "evaluations").exists() or not list((tmp_path / "evaluations").glob("*"))
+    assert cache.results == {} and cache.lookup(request()) is None

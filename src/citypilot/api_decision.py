@@ -204,11 +204,13 @@ def _evaluation_from_dict(d: dict) -> EvaluationResult:
 
 
 def _answers(result: EvaluationResult, request: RoutingRequest) -> bool:
-    """A stored result answers the request it is filed under (model_version/config_hash may be the evaluator's own)."""
-    return (result.od_set_id == request.od_set_id and result.state == request.state
-            and result.profile == request.profile and result.cap_min == request.cap_min
-            and result.primary_t_min == request.primary_t_min
-            and set(result.within_counts) == set(request.thresholds_min))
+    """result.validate_request(request) as a yes/no: contract, model_version, od_set_id, state, profile,
+    config_hash, primary_t, cap and thresholds must all match the request."""
+    try:
+        result.validate_request(request)
+    except ValueError:  # ContractError
+        return False
+    return True
 
 
 class EvaluationCache:
@@ -219,6 +221,8 @@ class EvaluationCache:
     plus the model identity (config_hash, input_hashes) and the evaluator scenario. Limits (B_h, K, N_a)
     are not part of it. Each file stores its key; a stored key that differs from the recomputed one,
     an unreadable file or a result that does not match the request is a miss: re-evaluate and overwrite.
+    Every returned result passes result.validate_request(request): a cached one that fails (disk or RAM)
+    is discarded and recomputed; a fresh one that fails raises and is never cached.
     """
 
     def __init__(self, cache_dir: Path, model_identity: dict, scenario: Scenario, make_evaluator: Callable[[], Callable]):
@@ -235,18 +239,31 @@ class EvaluationCache:
     def path_for(self, key: str) -> Path:
         return self.directory / f"{hashlib.sha256(key.encode()).hexdigest()}.json"
 
-    def evaluate(self, request: RoutingRequest) -> EvaluationResult:
+    def lookup(self, request: RoutingRequest) -> EvaluationResult | None:
+        """The valid stored result for this exact request (RAM, then disk), or None; never evaluates."""
         key = self.key_for(request)
         path = self.path_for(key)
         held = self.results.get(path.stem)
-        if held is not None and held[0] == key:
-            return held[1]
+        if held is not None:
+            if held[0] == key and _answers(held[1], request):
+                return held[1]
+            del self.results[path.stem]  # invalid RAM entry: discard
         result = self._read(path, key, request)
-        if result is None:
-            if self._evaluator is None:
-                self._evaluator = self._make_evaluator()
-            result = self._evaluator(request)
-            self._write(path, key, result)
+        if result is not None:
+            self.results[path.stem] = (key, result)
+        return result
+
+    def evaluate(self, request: RoutingRequest) -> EvaluationResult:
+        result = self.lookup(request)
+        if result is not None:
+            return result
+        if self._evaluator is None:
+            self._evaluator = self._make_evaluator()
+        result = self._evaluator(request)
+        result.validate_request(request)  # raises ContractError; nothing is cached
+        key = self.key_for(request)
+        path = self.path_for(key)
+        self._write(path, key, result)
         self.results[path.stem] = (key, result)
         return result
 
