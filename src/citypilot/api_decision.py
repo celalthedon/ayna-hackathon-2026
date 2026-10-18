@@ -37,7 +37,6 @@ from citypilot.decision_engine import (
     build_request,
     car_distance_coverage,
     co2_for_package,
-    compare_rank_keys,
     enumerate_packages,
     is_feasible,
     load_objective,
@@ -744,7 +743,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         rec_key = rank_key(rec.evaluation, rec.resources, objective, rec.candidate_ids)
         if not is_feasible(reference_resources, limits):
             verdict = "reference infeasible under these limits"
-        elif compare_rank_keys(rec_key[:2], ref_key[:2], objective) < 0:  # capped sums within the tie are equal
+        elif rec_key[:2] < ref_key[:2]:  # quantised capped sums (rank_key)
             verdict = "optimizer better"
         elif rec_key[2:5] < ref_key[2:5]:
             verdict = "equal, cheaper"
