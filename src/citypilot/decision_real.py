@@ -290,10 +290,12 @@ def verified_file(path: str | Path, sha256: str) -> Path:
     return path
 
 
-def real_backend(model: Any, cache_dir: str | Path, car_distances: str | Path, car_distances_sha256: str):
+def real_backend(model: Any, cache_dir: str | Path, car_distances: str | Path | None = None,
+                 car_distances_sha256: str | None = None):
     """DecisionBackend on the loaded model with the real catalog (R2/R14 cuts + M services), limits and N_a_max
     from config/limits.yaml, gate folders per profile, the AYNA reference package and CO2 factors P12/P13.
-    Its cache identity equals the precompute's (catalog model_version + real_input_hashes)."""
+    Its cache identity equals the precompute's (catalog model_version + real_input_hashes).
+    Without car_distances the CO2 car trip length has no modelled default (the UI asks for it)."""
     from citypilot.api_decision import Co2Inputs, DecisionBackend
     from citypilot.decision_engine import load_od_car_distances, load_scenario
     from citypilot.routing_engine import get_catalog
@@ -330,7 +332,8 @@ def real_backend(model: Any, cache_dir: str | Path, car_distances: str | Path, c
         stress_grid=real_stress_grid(),
         co2=Co2Inputs(candidates, catalog, bus_factor, car_factor,
                       {"bus_kg_per_vkm": f"P13 {bus_status}", "car_kg_per_pkm": f"P12 {car_status}"}),
-        od_car_distance_km=load_od_car_distances(verified_file(car_distances, car_distances_sha256)),
+        od_car_distance_km=None if car_distances is None
+        else load_od_car_distances(verified_file(car_distances, car_distances_sha256)),
         patches_for=lambda scenario: make_catalog_patches(candidates, catalog, scenario),
         catalog_hash=catalog_hash(candidates, exclusions),
     )

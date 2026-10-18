@@ -360,6 +360,18 @@ def index_row_problem(row) -> str | None:
     return f"wrong type or value: {wrong}" if wrong else None
 
 
+STRESS_VERSION = 1
+
+
+def stress_name(profile: str, model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
+    """stress_<profile>_<model_hash>.json: the stored stress result of the profile's default recommendation."""
+    return f"stress_{profile}_{model_hash(model_identity, scenario, catalog_hash)}.json"
+
+
+def package_id(ids) -> str:
+    return "+".join(sorted(set(ids))) or "NO_ACTION"
+
+
 def cache_identity(config_hash: str, input_hashes: Mapping[str, str]) -> dict:
     """Model identity in the cache key; the router and the precompute must build it the same way."""
     return {"config_hash": config_hash, "input_hashes": dict(sorted(input_hashes.items()))}
@@ -771,21 +783,19 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
     def post_compare(body: ProfileBody) -> dict:
         return stamp(dict(stored_compare(body.profile)), body, "compare_ayna")
 
-    @router.post("/stress")
-    def post_stress(body: PackageBody) -> dict:
-        committed_objective(body.profile)
+    def compute_stress(profile: str, package_ids) -> dict:
         if backend.stress_grid is None:
             raise HTTPException(409, "stress grid not available for this model")
-        setup = StressSetup(lambda sc: problem(sc, backend.limits, body.profile), lambda sc: evaluator(body.profile, sc),
+        setup = StressSetup(lambda sc: problem(sc, backend.limits, profile), lambda sc: evaluator(profile, sc),
                             backend.stress_grid, backend.H_hours)
         try:
-            r = stress_test(setup, body.package_ids)
+            r = stress_test(setup, package_ids)
         except ValueError as e:
             raise unprocessable(e)
         if r.status != "ok":
-            return stamp({"status": r.status, "message": r.message, "objective": r.objective,
-                          "package_ids": list(r.package_ids), "points": [], "worst": None, "reoptimization": None,
-                          "reoptimization_reason": "", "warnings": []}, body, "stress")
+            return {"status": r.status, "message": r.message, "objective": r.objective,
+                    "package_ids": list(r.package_ids), "points": [], "worst": None, "reoptimization": None,
+                    "reoptimization_reason": "", "warnings": []}
         points = [{"speed_level": p.speed_level, "headway_level": p.headway_level,
                    "speed_factor": p.scenario.speed_factor,
                    "headway_factors": dict(p.scenario.headway_factor_by_group or {}),
@@ -793,10 +803,70 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
                    "actions": p.actions, "within_t": p.within_t, "capped_time_sum": p.capped_time_sum,
                    "warnings": list(p.warnings)} for p in r.points]
         worst = next(pt for pt, p in zip(points, r.points) if p is r.worst)
-        return stamp({"status": r.status, "message": r.message,
-                      "objective": r.objective, "package_ids": list(r.package_ids), "points": points, "worst": worst,
-                      "reoptimization": optimization_json(r.reoptimization),
-                      "reoptimization_reason": r.reoptimization_reason, "warnings": list(r.warnings)}, body, "stress")
+        return jsonable({"status": r.status, "message": r.message,
+                         "objective": r.objective, "package_ids": list(r.package_ids), "points": points, "worst": worst,
+                         "reoptimization": optimization_json(r.reoptimization),
+                         "reoptimization_reason": r.reoptimization_reason, "warnings": list(r.warnings)})
+
+    stress_store: dict[str, dict] = {}  # canonical stress key -> result before stamping
+    default_recommendation: dict[str, tuple[tuple, tuple[str, ...]]] = {}  # profile -> (fingerprint, package)
+
+    def stress_key(profile: str, package_ids, objective: str) -> dict:
+        """Everything a stress result depends on: model, profile, package, grid, default limits, objective."""
+        grid = backend.stress_grid
+        grid_def = None if grid is None else {"speed_levels_kmh": dict(grid.speed_levels_kmh),
+                                              "headway_levels_min": {g: dict(v) for g, v in grid.headway_levels_min.items()},
+                                              "H_hours": backend.H_hours}
+        return json.loads(_canonical({
+            "version": STRESS_VERSION, "model": dict(model_identity), "profile": profile,
+            "package_id": package_id(package_ids),
+            "grid_hash": hashlib.sha256(_canonical(grid_def).encode()).hexdigest()[:16],
+            "limits": {f: getattr(backend.limits, f) for f in ("B_h_bus_hours", "K_new_infra_km", "N_a_actions")},
+            "objective": objective, "gate_hashes": dict(backend.model_hashes[profile])}))
+
+    def stress_path(profile: str) -> Path:
+        return Path(backend.cache_dir) / stress_name(profile, model_identity, default_scenario(), backend.catalog_hash)
+
+    def recommendation_at_defaults(profile: str) -> tuple[str, ...]:
+        """Default recommendation (config/limits.yaml); recomputed when the index changes."""
+        fingerprint = compare_fingerprint(profile)
+        held = default_recommendation.get(profile)
+        if held is None or held[0] != fingerprint:
+            scenario = default_scenario()
+            rec = optimize(problem(scenario, backend.limits, profile), evaluator(profile, scenario)).recommendation
+            held = default_recommendation[profile] = (fingerprint, tuple(rec.candidate_ids))
+        return held[1]
+
+    def load_stress(profile: str) -> None:
+        """Startup: the stored stress result is served only if its key equals the key computed now."""
+        path = stress_path(profile)
+        if not path.exists():
+            return
+        try:
+            stored = json.loads(path.read_text())
+            key = stress_key(profile, stored["key"]["package_id"].split("+") if stored["key"]["package_id"] != "NO_ACTION"
+                             else (), committed_objective(profile))
+            if json.loads(_canonical(stored["key"])) != key:
+                log.warning("stress %s ignored: model, grid, limits or objective changed", path.name)
+                return
+            stress_store[_canonical(key)] = stored["result"]
+        except (OSError, ValueError, KeyError, TypeError, HTTPException) as e:
+            log.warning("stress %s ignored: %s", path.name, e)
+
+    @router.post("/stress")
+    def post_stress(body: PackageBody) -> dict:
+        objective = committed_objective(body.profile)
+        key = stress_key(body.profile, body.package_ids, objective)
+        name = _canonical(key)
+        if name not in stress_store:
+            result = compute_stress(body.profile, body.package_ids)
+            stress_store[name] = result
+            if result["status"] == "ok" and tuple(sorted(body.package_ids)) == recommendation_at_defaults(body.profile):
+                path = stress_path(body.profile)
+                tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+                tmp.write_text(_canonical({"key": key, "result": result}))
+                tmp.replace(path)  # the default recommendation's stress: precomputed for the demo
+        return stamp(dict(stress_store[name]), body, "stress")
 
     @router.post("/remove")
     def post_remove(body: RemoveBody) -> dict:
@@ -841,6 +911,9 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return stamp(jsonable(r) | {"car_trip_km_source": source, "car_trip_km_status": status,
                                     "car_distance_coverage": coverage, "factor_statuses": dict(co2.factor_statuses)},
                      body, "co2")
+
+    for p in PROFILES:  # startup: stored stress results (served while their key matches)
+        load_stress(p)
 
     for p in PROFILES:  # startup: compare_ayna has fixed inputs; once per profile, from a complete index only
         if not index_status.get(p, {}).get("loaded"):
