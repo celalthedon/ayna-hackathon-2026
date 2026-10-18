@@ -180,3 +180,24 @@ def test_reader_needs_the_agreed_columns(tmp_path):
     path.write_text("od_id,car_distance_km\nOD1,4.0\n", encoding="utf-8")
     with pytest.raises(ValueError, match="columns"):
         load_od_car_distances(path)
+
+
+SUPPLEMENT_HEADER = ("od_id,origin_id,destination_id,profile,car_distance_km,status,snap_m,origin_snap_m,"
+                     "destination_snap_m\n")
+
+
+def test_reader_accepts_the_routing_supplement_layout(tmp_path):
+    path = tmp_path / "od_car_distances.csv"
+    path.write_text(SUPPLEMENT_HEADER + "OD1,origin:a,destination:b,P,4.0,modelled,12.5,3.0,9.5\n"
+                    "OD2,origin:c,destination:b,P,,no_path,,1.0,2.0\n", encoding="utf-8")
+    table = load_od_car_distances(path)
+    assert table["OD1"] == OdCarDistance("OD1", 4.0, "modelled", 12.5, 3.0, 9.5)
+    assert table["OD2"].status == "no_path" and table["OD2"].car_distance_km is None
+
+
+def test_reader_rejects_other_extra_columns(tmp_path):
+    path = tmp_path / "od_car_distances.csv"
+    path.write_text("od_id,origin_id,car_distance_km,status,snap_m,origin_snap_m,destination_snap_m\n"
+                    "OD1,origin:a,4.0,modelled,1,1,1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="columns"):
+        load_od_car_distances(path)

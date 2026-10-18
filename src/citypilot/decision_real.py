@@ -108,12 +108,14 @@ def closure_distance_m(model: Any, candidates: Mapping[str, Candidate]) -> dict[
 
 
 def real_problem(model: Any, profile: str, limits: Limits, candidates: Mapping[str, Candidate],
-                 exclusions: tuple[tuple[str, ...], ...], H_hours: float, directories=GATE_DIRS) -> DecisionProblem:
-    """DecisionProblem on the loaded model: catalog resources and patches, gate folder and hashes per profile."""
+                 exclusions: tuple[tuple[str, ...], ...], H_hours: float, directories=GATE_DIRS,
+                 scenario: Scenario | None = None) -> DecisionProblem:
+    """DecisionProblem on the loaded model: catalog resources and patches, gate folder and hashes per profile.
+    scenario defaults to speed and headway factors 1 (the stress test passes its grid points)."""
     from citypilot.routing_engine import get_catalog
 
     catalog = get_catalog(model)
-    scenario = Scenario(1.0, 1.0, H_hours)
+    scenario = scenario or Scenario(1.0, 1.0, H_hours)
     hashes = gate_hashes(model)[profile]
     base = baseline_request(model, "disrupted", profile)
     return DecisionProblem(
@@ -221,3 +223,73 @@ def strongest_package(candidates: Mapping[str, Candidate], exclusions: tuple[tup
     grouped = {i for g in exclusions for i in g}
     picked = [max(g, key=lambda i: (strength(i), i)) for g in exclusions]
     return tuple(sorted(picked + [c for c in candidates if c not in grouped]))
+
+
+# --- real decision API backend ---
+
+ASSUMPTIONS_PATH = ROOT / "data" / "curated" / "assumptions.csv"
+
+
+def assumption_default(param_id: str, path: str | Path = ASSUMPTIONS_PATH) -> tuple[float, str]:
+    """value_default and status of one assumptions.csv row; exactly one row must exist."""
+    import csv
+
+    with open(path, newline="", encoding="utf-8") as f:
+        rows = [r for r in csv.DictReader(f) if r["param_id"] == param_id]
+    if len(rows) != 1:
+        raise ValueError(f"{path}: need exactly one {param_id} row, got {len(rows)}")
+    return float(rows[0]["value_default"]), rows[0]["status"]
+
+
+def verified_file(path: str | Path, sha256: str) -> Path:
+    """The file, after checking its SHA-256; a mismatch fails loudly."""
+    import hashlib
+
+    path = Path(path)
+    got = hashlib.sha256(path.read_bytes()).hexdigest()
+    if got != sha256:
+        raise ValueError(f"{path}: SHA-256 {got} is not the expected {sha256}")
+    return path
+
+
+def real_backend(model: Any, cache_dir: str | Path, car_distances: str | Path, car_distances_sha256: str):
+    """DecisionBackend on the loaded model with the real catalog (R2/R14 cuts + M services), limits and N_a_max
+    from config/limits.yaml, gate folders per profile, the AYNA reference package and CO2 factors P12/P13.
+    Its cache identity equals the precompute's (catalog model_version + real_input_hashes)."""
+    from citypilot.api_decision import Co2Inputs, DecisionBackend
+    from citypilot.decision_engine import load_od_car_distances, load_scenario
+    from citypilot.routing_engine import get_catalog
+
+    catalog = get_catalog(model)
+    candidates, exclusions = real_catalog(catalog)
+    H_hours = load_scenario(LIMITS_PATH, 1.0, 1.0).H_hours
+    base = baseline_request(model, "disrupted", "P")
+    bus_factor, bus_status = assumption_default("P13")
+    car_factor, car_status = assumption_default("P12")
+    return DecisionBackend(
+        config_hash=catalog.model_version,
+        input_hashes=real_input_hashes(model),
+        candidate_ids=tuple(sorted(candidates)),
+        exclusions=exclusions,
+        prerequisites={},
+        distance_m=closure_distance_m(model, candidates),
+        limits=real_limits(),
+        thresholds_min=tuple(base.thresholds_min),
+        primary_t_min=base.primary_t_min,
+        cap_min=base.cap_min,
+        objective_dirs=GATE_DIRS,
+        model_hashes=gate_hashes(model),
+        model_version=base.model_version,
+        od_set_id=base.od_set_id,
+        closure_id=base.closure_id,
+        H_hours=H_hours,
+        resources_for=lambda scenario: make_catalog_resources(candidates, catalog, scenario),
+        evaluator_for=lambda profile, scenario: real_evaluator(model),
+        cache_dir=Path(cache_dir),
+        N_a_max=load_n_a_max(),
+        reference_package_ids=AYNA_REFERENCE,
+        co2=Co2Inputs(candidates, catalog, bus_factor, car_factor,
+                      {"bus_kg_per_vkm": f"P13 {bus_status}", "car_kg_per_pkm": f"P12 {car_status}"}),
+        od_car_distance_km=load_od_car_distances(verified_file(car_distances, car_distances_sha256)),
+        patches_for=lambda scenario: make_catalog_patches(candidates, catalog, scenario),
+    )
