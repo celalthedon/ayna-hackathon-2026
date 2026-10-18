@@ -73,9 +73,11 @@ def route_cut_exclusions(candidates: Mapping[str, Candidate]) -> tuple[tuple[str
 
 
 def closure_distance_m(model: Any, candidates: Mapping[str, Candidate]) -> dict[str, float]:
-    """Straight-line metres (metric CRS) from the nearest stop served by the candidate's group to the nearer
+    """Straight-line metres (metric CRS) from the nearest stop served by the candidate's service to the nearer
     closure-link station. Used only to order the nearest-gap baseline, never for any journey."""
     from pyproj import Transformer
+
+    from citypilot.routing_engine import get_catalog
 
     links = model["links"]
     closure = links[links["is_closure_link"]]
@@ -84,14 +86,23 @@ def closure_distance_m(model: Any, candidates: Mapping[str, Candidate]) -> dict[
     station_ids = (closure.iloc[0]["from_station_id"], closure.iloc[0]["to_station_id"])
     to_metric = Transformer.from_crs("EPSG:4326", model["runtime"]["metric_crs"], always_xy=True)
     stations = [to_metric.transform(*model["stations"][s]["geometry"]["coordinates"]) for s in station_ids]
-    stops = model["stops"].set_index("stop_id")
-    nodes = model["bus_nodes"]
+    catalog = get_catalog(model)
+    services = {**catalog.service_groups, **catalog.prebuilt_services}
+    stop_ids = {p.pattern_id: p.stop_ids for p in catalog.patterns}
+    curated = model["stops"].set_index("stop_id")
+    prebuilt = model.get("prebuilt_stops", {})
+
+    def lonlat(stop_id):
+        if stop_id in prebuilt:
+            return prebuilt[stop_id]["coordinates"]
+        return curated.at[stop_id, "lon"], curated.at[stop_id, "lat"]
+
     result = {}
     for cid, c in candidates.items():
-        served = sorted(set(nodes.loc[nodes["service_group_id"] == c.target_id, "stop_id"]))
-        if not served:
-            raise ValueError(f"{cid}: no stops served by {c.target_id}")
-        points = [to_metric.transform(stops.at[s, "lon"], stops.at[s, "lat"]) for s in served]
+        if c.target_id not in services:
+            raise ValueError(f"{cid}: {c.target_id} not in the loaded model's catalog")
+        served = sorted({s for pid in services[c.target_id].pattern_ids for s in stop_ids[pid]})
+        points = [to_metric.transform(*lonlat(s)) for s in served]
         result[cid] = min(((x - sx) ** 2 + (y - sy) ** 2) ** 0.5 for x, y in points for sx, sy in stations)
     return result
 
@@ -121,3 +132,42 @@ def real_evaluator(model: Any):
     from citypilot.routing_engine import evaluate_package
 
     return lambda request: evaluate_package(model, request)
+
+
+# --- real catalog (part B): R2 / R14 cuts + Celal's modelled M-service supplement ---
+
+M_LINES = (1, 2, 3, 5, 6)  # M4 not announced; M9 excluded from the supplement
+M_VARIANTS = {"A": 6.0, "B": 9.0}  # service suffix -> design headway (min), as registered in the supplement
+AYNA_REFERENCE = tuple(f"SVC_M{n}_A" for n in M_LINES)
+AYNA_REFERENCE_LABEL = ("AYNA-announced express lines "
+                        "(modelled: stops from official images, path and headway assumed)")
+M_ASSETS_NOT_LOADED = "M assets not loaded"
+
+
+class MAssetsNotLoaded(ValueError):
+    """The loaded model has no (or an incomplete) M-service supplement."""
+
+
+def m_service_candidates(catalog) -> dict[str, Candidate]:
+    """activate_service candidates SVC_M<n>_A (6 min) and SVC_M<n>_B (9 min) from the catalog's prebuilt services."""
+    ids = [f"SVC_M{n}_{v}" for n in M_LINES for v in M_VARIANTS]
+    missing = [i for i in ids if i not in catalog.prebuilt_services]
+    if missing:
+        raise MAssetsNotLoaded(f"{M_ASSETS_NOT_LOADED}: catalog lacks {missing}")
+    wrong = {i: catalog.prebuilt_services[i].base_headway_min for i in ids
+             if catalog.prebuilt_services[i].base_headway_min != M_VARIANTS[i[-1]]}
+    if wrong:
+        raise ValueError(f"M-service headways differ from the registered variants {M_VARIANTS}: {wrong}")
+    return {i: Candidate(i, "activate_service", target_id=i) for i in ids}
+
+
+def m_service_exclusions(candidates: Mapping[str, Candidate]) -> tuple[tuple[str, ...], ...]:
+    """One exclusion group per M line: its 6-min and 9-min variants cannot be combined."""
+    return tuple(tuple(sorted(c for c in candidates if c.startswith(f"SVC_M{n}_"))) for n in M_LINES)
+
+
+def real_catalog(catalog) -> tuple[dict[str, Candidate], tuple[tuple[str, ...], ...]]:
+    """R2/R14 cut variants plus the M services; raises MAssetsNotLoaded without the supplement. No BIKE:
+    the routing engine does not implement activate_link and the catalog has no links."""
+    cuts, m = route_cut_candidates(catalog), m_service_candidates(catalog)
+    return cuts | m, route_cut_exclusions(cuts) + m_service_exclusions(m)
