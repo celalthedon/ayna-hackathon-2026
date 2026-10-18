@@ -47,8 +47,14 @@ test('mode titles are Azerbaijani while original routing modes remain unchanged'
 });
 
 test('user-facing assets are valid UTF-8 without mojibake or replacement characters',()=>{
-  for(const file of ['web/citypilot.html','web/static/citypilot/app.js','web/static/citypilot/journey-presentation.js','web/static/citypilot/routing-adapter.js','web/static/citypilot/routing-ui.js','web/static/citypilot/playback.js']) {
+  for(const file of ['web/citypilot.html','web/static/citypilot/app.js','web/static/citypilot/mobile-layout.js','web/static/citypilot/mobile.css','web/static/citypilot/journey-presentation.js','web/static/citypilot/routing-adapter.js','web/static/citypilot/routing-ui.js','web/static/citypilot/playback.js']) {
     const text=new TextDecoder('utf-8',{fatal:true}).decode(fs.readFileSync(new URL('../'+file,import.meta.url)));
     assert.doesNotMatch(text,/\ufffd|Ã|Â|Ä|Å|É|â€|Æ/,file);
   }
+});
+
+test('playback caption is authored in Azerbaijani without question-mark corruption',()=>{
+  const html=fs.readFileSync(new URL('../web/citypilot.html',import.meta.url),'utf8');
+  assert.match(html,/<div class="timeline-caption"><span>Səfər simulyasiyası<\/span>/);
+  assert.doesNotMatch(html,/S\?f\?r simulyasiyas\?/);
 });
