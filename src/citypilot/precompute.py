@@ -33,8 +33,9 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from citypilot.api_decision import EvaluationCache, _canonical, cache_identity
-from citypilot.decision_engine import DecisionProblem, Limits, Scenario, build_request, enumerate_packages
+from citypilot.api_decision import (INDEX_VERSION, EvaluationCache, _canonical, _evaluator_scenario_key, cache_identity,
+                                    index_name, index_row)
+from citypilot.decision_engine import DecisionProblem, Limits, Scenario, build_request, enumerate_packages, is_feasible
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CACHE_DIR = ROOT / "data" / "cache"
@@ -56,6 +57,7 @@ class Context:
     make_evaluator: Callable[[], Callable]
     info: Mapping[str, Any]  # model identity for the manifest
     catalog_hash: str | None = None  # decision_real.catalog_hash of the (variant-filtered) candidate catalog
+    default_limits: Limits | None = None  # config/limits.yaml defaults; the index's feasible flag
 
     @property
     def profile(self) -> str:
@@ -90,6 +92,7 @@ def build_context(bundle: Path, config: Path, profile: str, m_variants: str) -> 
         make_evaluator=lambda: real_evaluator(model),
         info={"model_version": catalog.model_version, **hashes},
         catalog_hash=catalog_hash(candidates, exclusions),
+        default_limits=base,
     )
 
 
@@ -220,6 +223,35 @@ def library_versions() -> dict[str, str | None]:
     return versions
 
 
+def write_index(ctx: Context, cache_dir: Path) -> dict:
+    """index_<profile>_<model_hash>.json: one summary row per cached package, from validated full files only
+    (never evaluates). The API loads only this at startup."""
+    cache_dir = Path(cache_dir)
+    cache = EvaluationCache(cache_dir, dict(ctx.identity), ctx.scenario, ctx.make_evaluator)
+    limits = ctx.default_limits or ctx.problem.limits
+    rows, missing, invalid = [], 0, 0
+    for ids in plan(ctx.problem):
+        request = build_request(ctx.problem, ids)
+        result = cache.lookup_full(request)
+        if result is None:
+            if cache.path_for(cache.key_for(request)).exists():
+                invalid += 1
+            else:
+                missing += 1
+            continue
+        resources = ctx.problem.resources(ids)
+        rows.append(index_row(result, ids, resources, is_feasible(resources, limits)))
+    path = cache_dir / index_name(ctx.profile, ctx.identity, ctx.scenario)
+    index = {"index_version": INDEX_VERSION, "profile": ctx.profile, "model": json.loads(_canonical(dict(ctx.identity))),
+             "scenario": _evaluator_scenario_key(ctx.scenario),
+             "feasible_limits": {f: getattr(limits, f) for f in ("B_h_bus_hours", "K_new_infra_km", "N_a_actions")},
+             "created": datetime.now(timezone.utc).isoformat(), "rows": rows}
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(index, ensure_ascii=False, allow_nan=False))
+    tmp.replace(path)
+    return {"file": path.name, "rows": len(rows), "missing": missing, "invalid": invalid}
+
+
 def run(ctx: Context, cache_dir: Path, workers: int = 1, limit: int | None = None, context_factory=None) -> dict:
     """Precompute and merge this run into the manifest; returns the run entry. workers > 1 spawns processes
     that each build their context with context_factory() (picklable, e.g. functools.partial(build_context, ...))."""
@@ -266,6 +298,7 @@ def run(ctx: Context, cache_dir: Path, workers: int = 1, limit: int | None = Non
         "max_package_check": check,
         "finding": finding,
         "log": log_path.name,
+        "index": write_index(ctx, cache_dir),
     }
     manifest_path = cache_dir / MANIFEST_NAME
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"runs": {}}
@@ -299,6 +332,7 @@ def main(argv=None) -> int:
     parser.add_argument("--workers", required=True, type=int)
     parser.add_argument("--dry-run", action="store_true", help="enumerate only and print counts per N_a")
     parser.add_argument("--limit", type=int, help="evaluate only the first N packages (pilot)")
+    parser.add_argument("--index-only", action="store_true", help="only (re)build the index from the cache")
     parser.add_argument("--m-variants", choices=M_VARIANT_CHOICES, default="all")
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
     parser.add_argument("--bundle", type=Path, default=os.environ.get("CITYPILOT_ARTIFACT_DIR"))
@@ -314,10 +348,13 @@ def main(argv=None) -> int:
                           "counts_by_N_a": counts_by_n_a(packages, ctx.problem.limits.N_a_actions),
                           "max_package": list(ctx.max_package)}, indent=2))
         return 0
+    if args.index_only:
+        print(json.dumps(write_index(ctx, args.cache_dir), indent=2))
+        return 0
     entry = run(ctx, args.cache_dir, args.workers, args.limit,
                 context_factory=functools.partial(build_context, args.bundle, args.config, args.profile, args.m_variants))
     print(json.dumps({k: entry[k] for k in ("profile", "m_variants", "counts", "wall_s", "duration_ms",
-                                             "peak_rss_kb_per_worker", "finding")}, indent=2))
+                                             "peak_rss_kb_per_worker", "finding", "index")}, indent=2))
     return 1 if entry["failed_ids"] else 0
 
 
