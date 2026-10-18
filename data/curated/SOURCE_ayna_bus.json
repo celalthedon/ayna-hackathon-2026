@@ -9,5 +9,23 @@
   },
   "delivered_by": "delivered by teammate (non-coder, ChatGPT-assisted, checked_by fields say so)",
   "supersedes": "phase1 supersedes the older phase-1 delivery citypilot_all_tasks.zip, which must not be used",
-  "handling": "extracted into an empty temp directory; no absolute or '..' paths, no symlinks; files copied unchanged"
+  "handling": "extracted into an empty temp directory; no absolute or '..' paths, no symlinks; files copied unchanged",
+  "additional_sources": [
+    {
+      "zip_file": "CityPilot_M_lines_research.zip",
+      "zip_sha256": "ee2c62fc81fe3d2f30e1489751472699621d09d0020af4bb42a2215cdb449365",
+      "extraction_date": "2026-10-18",
+      "target": "data/raw/ayna_bus/m_research/",
+      "files_sha256": {
+        "SOURCES.md": "0549ec3270bb50e34d8715bcdbed29f486cc571b52613dcd9b2632bcdc52de37",
+        "m_lines_path.md": "175cc78b8a04c9616f5e71c332570d12c04d2b99b50799cc49ad84c938b4fca2",
+        "m_lines_service.csv": "a7706b9e6591a6b93e63003b233e2d60354491e0781855aba18ab35754035c26",
+        "m_lines_status.csv": "57999a3f3fe190946c6610d8718c0bf6c73bdc76a21bdeca676d4e9012c4af6d",
+        "m_lines_stops.csv": "87e8430c6953494b4356b78e61941e2be14ec4d7ffebac46179a7e4f1031e998"
+      },
+      "status": "AI research, not human-verified",
+      "used_by": "data/curated/assumptions.csv P21",
+      "handling": "extracted into an empty temp directory; no absolute or '..' paths, no symlinks; top folder CityPilot_M_lines_research/ dropped; files copied unchanged"
+    }
+  ]
 }

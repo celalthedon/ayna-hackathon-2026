@@ -276,3 +276,14 @@ def test_metro_headways_p19_p20(assumptions, pid, value, applies_to, evidence):
     assert r["justification"] == "official construction-period regime; no range published"
     for e in evidence:
         assert e in r["notes"]
+
+
+def test_m_research_source_recorded():
+    curated = json.loads((CURATED / "SOURCE_ayna_bus.json").read_text(encoding="utf-8"))
+    (m,) = [s for s in curated["additional_sources"] if s["target"] == "data/raw/ayna_bus/m_research/"]
+    assert m["zip_file"] == "CityPilot_M_lines_research.zip" and len(m["zip_sha256"]) == 64
+    assert m["status"] == "AI research, not human-verified" and "P21" in m["used_by"]
+    folder = CURATED.parent / "raw" / "ayna_bus" / "m_research"
+    if folder.exists():  # raw data is local only (git-ignored)
+        import hashlib
+        assert {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in folder.iterdir()} == m["files_sha256"]
