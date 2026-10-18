@@ -3,15 +3,18 @@
     make the list (Ali):   python tools/verify_cache_sample.py make --bundle <bundle> --out check_list.json
     check it (anyone):     python tools/verify_cache_sample.py check --bundle <bundle> --list check_list.json
 
-`check` rebuilds each request on this machine (its config_hash must equal the listed one: same model,
-OD set, patches and thresholds), evaluates it fresh with the routing engine and compares the canonical
-OD-level result (SHA-256 of every OD's status, minutes and capped_minutes, sorted by od_id; must be equal),
-within_counts (exact), capped_time_sum and, against the stored file, every OD (|delta| reported, 1e-6 min).
+`check` rebuilds each request on this machine and evaluates it fresh. Cross-platform acceptance rule
+(agreed with Celal after the Windows check of the Linux-built cache):
+  exact:            request identity (config_hash), within_counts, OD ids, every OD's status
+  within 1e-6 min:  every OD's minutes and capped_minutes, capped_time_sum
+  reported only:    exact OD hash (SHA-256 of [od_id, status, minutes, capped_minutes]): "exact hash: k/n match"
+The check list (version 2) carries every OD's [od_id, status, minutes, capped_minutes].
 Config is always supplements/m_services_v1/config (the M-supplement model).
 """
 import argparse
 import hashlib
 import json
+import math
 import platform
 import sys
 from pathlib import Path
@@ -26,7 +29,10 @@ from citypilot.decision_real import (AYNA_REFERENCE, LIMITS_PATH, load_n_a_max, 
 
 CONFIG = ROOT / "supplements" / "m_services_v1" / "config"
 CACHE_DIR = ROOT / "data" / "cache"
-MINUTES_TOL = 1e-6
+MINUTES_TOL = 1e-6  # minutes, capped_minutes and capped sums; everything else is compared exactly
+LIST_VERSION = 2
+RULE = ("exact: config_hash, within_counts, OD ids, statuses; within 1e-6 min: minutes, capped_minutes, "
+        "capped sums; exact OD hash reported, not required")
 SAMPLE = {  # 5 per profile: no action, recommendations, compare_ayna packages, the AYNA reference, a cut pair
     "P": [(), ("SVC_M5_A",), ("R2_CUT25",), AYNA_REFERENCE,
           ("R14_CUT25", "R2_CUT25", "SVC_M3_A", "SVC_M5_A", "SVC_M6_A")],
@@ -41,23 +47,37 @@ def ods_digest(result) -> str:
     return hashlib.sha256(json.dumps(rows, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
-def compare_item(item: dict, config_hash: str, fresh, stored=None) -> dict:
-    """One check-list item vs a fresh evaluation (and the stored cache file when present)."""
+def ods_rows(result) -> list:
+    return [[o.od_id, o.status, o.minutes, o.capped_minutes] for o in sorted(result.od_results, key=lambda o: o.od_id)]
+
+
+def _delta(a, b) -> float:
+    """|a - b| in minutes; None (no_path) only matches None."""
+    if a is None or b is None:
+        return 0.0 if a is b else math.inf
+    return abs(a - b)
+
+
+def compare_item(item: dict, config_hash: str, fresh) -> dict:
+    """One check-list item vs a fresh evaluation, under the cross-platform acceptance rule."""
+    if "ods" not in item:
+        raise ValueError(f"check list item {item['candidate_ids']} has no per-OD rows: make a version-{LIST_VERSION} list")
+    listed = {r[0]: r for r in item["ods"]}
+    got = {r[0]: r for r in ods_rows(fresh)}
+    same_ids = listed.keys() == got.keys()
+    common = listed.keys() & got.keys()
     row = {"profile": item["profile"], "candidate_ids": item["candidate_ids"],
            "config_hash_equal": config_hash == item["config_hash"],
-           "ods_sha256_equal": ods_digest(fresh) == item["ods_sha256"],
-           "od_count_equal": len(fresh.od_results) == item["od_count"],
            "within_counts_equal": {str(t): n for t, n in fresh.within_counts.items()} == item["within_counts"],
-           "capped_time_sum_delta": fresh.capped_time_sum - item["capped_time_sum"]}
-    if stored is not None:
-        by_id = {o.od_id: o for o in stored.od_results}
-        deltas = [abs(o.minutes - by_id[o.od_id].minutes) for o in fresh.od_results
-                  if o.minutes is not None and by_id[o.od_id].minutes is not None]
-        row["status_differences"] = sum(o.status != by_id[o.od_id].status for o in fresh.od_results)
-        row["max_abs_minutes_delta"] = max(deltas, default=0.0)
-    row["ok"] = (row["config_hash_equal"] and row["ods_sha256_equal"] and row["od_count_equal"]
-                 and row["within_counts_equal"] and abs(row["capped_time_sum_delta"]) <= 1e-6
-                 and row.get("status_differences", 0) == 0 and row.get("max_abs_minutes_delta", 0.0) <= MINUTES_TOL)
+           "od_ids_equal": same_ids,
+           "status_differences": sum(got[k][1] != listed[k][1] for k in common),
+           "max_abs_minutes_delta": max((_delta(got[k][2], listed[k][2]) for k in common), default=0.0),
+           "max_abs_capped_minutes_delta": max((_delta(got[k][3], listed[k][3]) for k in common), default=0.0),
+           "capped_time_sum_delta": abs(fresh.capped_time_sum - item["capped_time_sum"]),
+           "exact_hash_equal": ods_digest(fresh) == item["ods_sha256"]}  # reported, not required
+    row["ok"] = (row["config_hash_equal"] and row["within_counts_equal"] and same_ids
+                 and row["status_differences"] == 0 and row["max_abs_minutes_delta"] <= MINUTES_TOL
+                 and row["max_abs_capped_minutes_delta"] <= MINUTES_TOL and row["capped_time_sum_delta"] <= MINUTES_TOL)
     return row
 
 
@@ -90,8 +110,9 @@ def make(args) -> int:
                           "cache_file": cache.path_for(cache.key_for(request)).name,
                           "within_counts": {str(t): n for t, n in full.within_counts.items()},
                           "capped_time_sum": full.capped_time_sum, "ods_sha256": ods_digest(full),
-                          "od_count": len(full.od_results)})
-    args.out.write_text(json.dumps({"model": identity, "made_on": platform.platform(), "items": items}, indent=2))
+                          "od_count": len(full.od_results), "ods": ods_rows(full)})
+    args.out.write_text(json.dumps({"list_version": LIST_VERSION, "model": identity, "made_on": platform.platform(),
+                                    "rule": RULE, "items": items}, indent=1))
     print(args.out, len(items), "packages")
     return 0
 
@@ -104,10 +125,12 @@ def check(args) -> int:
     report, bad = [], 0
     for item in listed["items"]:
         request = build_request(problems[item["profile"]], tuple(item["candidate_ids"]))
-        row = compare_item(item, request.config_hash, evaluate(request), cache.lookup_full(request))
+        row = compare_item(item, request.config_hash, evaluate(request))
         bad += not row["ok"]
         report.append(row)
-    out = {"platform": platform.platform(), "python": sys.version.split()[0], "items": report, "failed": bad}
+    exact = sum(r["exact_hash_equal"] for r in report)
+    out = {"platform": platform.platform(), "python": sys.version.split()[0], "rule": RULE, "items": report,
+           "failed": bad, "exact_hash": f"{exact}/{len(report)} match"}
     print(json.dumps(out, indent=2))
     return 1 if bad else 0
 
