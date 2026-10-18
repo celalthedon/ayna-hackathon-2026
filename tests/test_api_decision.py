@@ -1,4 +1,5 @@
 """Decision API router. Expected values were computed by hand."""
+import dataclasses
 import json
 from pathlib import Path
 
@@ -69,6 +70,7 @@ def four_action_backend(tmp_path, counter, reference=("B", "C", "D"), objective=
         resources_for=lambda scenario: table_resources(FIXTURE["actions"]),
         evaluator_for=counter.evaluator_for,
         cache_dir=tmp_path / "cache",
+        N_a_max=4,
         reference_package_ids=reference,
     )
 
@@ -317,3 +319,45 @@ def test_stress_not_available_from_adapter(tmp_path):
     assert body["status"] == "not_available"
     assert body["message"].startswith("stress not available for this model yet")
     assert body["points"] == [] and body["worst"] is None
+
+
+# --- N_a_max and findings ---
+
+def test_n_a_max_comes_from_the_backend(tmp_path, counter):
+    c = client_for(dataclasses.replace(four_action_backend(tmp_path, counter), N_a_max=3))
+    assert strict_json(c.get("/decision/state"))["N_a_max"] == 3
+    r = optimize(c, 24, N_a=4)
+    assert r.status_code == 422 and "exceeds N_a_max 3" in r.json()["detail"]
+    assert optimize(c, 24, N_a=3).status_code == 200
+
+
+def test_default_n_a_cannot_exceed_n_a_max(tmp_path, counter):
+    with pytest.raises(ValueError, match="exceeds N_a_max"):
+        dataclasses.replace(four_action_backend(tmp_path, counter), N_a_max=2)
+
+
+FIXTURE_IDENTITY = {"config_hash": "fixture_4action", "input_hashes": {"fixture": "fixture_4action"}}
+
+
+def test_finding_is_shown_not_an_error(tmp_path, counter):
+    from citypilot.api_decision import Finding
+    finding = "B: no catalog action changes bike travel times"
+    c = client_for(dataclasses.replace(four_action_backend(tmp_path, counter),
+                                       findings={"B": Finding(finding, FIXTURE_IDENTITY, None)}))
+    assert strict_json(c.get("/decision/state"))["findings"] == {"B": finding}
+    r = optimize(c, 24, profile="B")
+    assert r.status_code == 200 and r.json()["finding"] == finding
+    assert optimize(c, 24, profile="P").json()["finding"] is None
+
+
+@pytest.mark.parametrize("stale", [
+    {"model_identity": {"config_hash": "other-model", "input_hashes": {"fixture": "fixture_4action"}}},
+    {"catalog_hash": "design_only-catalog"},
+])
+def test_a_finding_for_another_model_or_catalog_is_never_shown(tmp_path, counter, stale):
+    from citypilot.api_decision import Finding
+    f = Finding(**({"text": "B: no catalog action changes bike travel times", "model_identity": FIXTURE_IDENTITY,
+                    "catalog_hash": None} | stale))
+    c = client_for(dataclasses.replace(four_action_backend(tmp_path, counter), findings={"B": f}))
+    assert strict_json(c.get("/decision/state"))["findings"] == {}
+    assert optimize(c, 24, profile="B").json()["finding"] is None

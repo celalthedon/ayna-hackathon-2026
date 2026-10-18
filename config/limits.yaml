@@ -3,4 +3,5 @@ H_hours: 3.0          # analysis period in hours; added bus-hours = vehicle delt
 B_h_bus_hours: 30.0   # maximum added bus-hours one package may use
 K_new_infra_km: 2.0   # maximum km of new walk/bike links that require construction
 N_a_actions: 3        # maximum number of selected actions (catalog entries) in one package
-max_exact_packages: 1024  # above this many enumerated packages, exact search is skipped and the best baseline is returned as approximate
+N_a_max: 5            # largest N_a the API and UI offer; precompute enumerates every package up to it
+max_exact_packages: 3000  # above this many enumerated packages, exact search is skipped and the best baseline is returned as approximate
