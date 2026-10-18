@@ -71,6 +71,7 @@ def four_action_backend(tmp_path, counter, reference=("B", "C", "D"), objective=
         evaluator_for=counter.evaluator_for,
         cache_dir=tmp_path / "cache",
         N_a_max=4,
+        B_h_max=120.0,
         reference_package_ids=reference,
     )
 
@@ -395,7 +396,19 @@ def test_stress_evaluates_only_what_it_needs(tmp_path):
     assert stressed and max(stressed.values()) < 12  # no first-use pass over every package at a grid point
 
 
-def test_b_h_above_70_is_accepted(client):
+def test_b_h_up_to_b_h_max_is_accepted_above_is_422(client):
     r = optimize(client, 105, N_a=3)
     assert r.status_code == 200 and r.json()["limits"]["B_h_bus_hours"] == 105
-    assert strict_json(client.get("/decision/state"))["reference_bus_hours"] == 30  # fixture B 15 + C 15 + D 0
+    assert optimize(client, 120, N_a=3).status_code == 200
+    r = optimize(client, 120.5, N_a=3)
+    assert r.status_code == 422 and "exceeds B_h_max 120.0" in r.json()["detail"]
+    s = strict_json(client.get("/decision/state"))
+    assert s["B_h_max"] == 120.0 and s["reference_bus_hours"] == 30  # fixture B 15 + C 15 + D 0
+
+
+def test_b_h_max_comes_from_config_and_bounds_the_default(tmp_path, counter):
+    from citypilot.decision_real import LIMITS_PATH, load_b_h_max
+    import yaml
+    assert load_b_h_max() == 120.0 == yaml.safe_load(LIMITS_PATH.read_text())["B_h_max"]
+    with pytest.raises(ValueError, match="exceeds B_h_max"):
+        dataclasses.replace(four_action_backend(tmp_path, counter), B_h_max=10.0)

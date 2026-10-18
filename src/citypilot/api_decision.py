@@ -98,6 +98,7 @@ class DecisionBackend:
     evaluator_for: Callable[[str, Scenario], Callable[[RoutingRequest], EvaluationResult]]  # (profile, scenario)
     cache_dir: Path
     N_a_max: int  # slider / enumeration maximum; config/limits.yaml N_a_max
+    B_h_max: float  # largest B_h accepted (budget slider maximum); config/limits.yaml B_h_max
     reference_package_ids: tuple[str, ...] | None = None  # the AYNA real response, from the catalog
     stress_grid: StressGrid | None = None
     co2: Co2Inputs | None = None
@@ -117,6 +118,11 @@ class DecisionBackend:
             raise ValueError("objective_dirs is empty")
         if isinstance(self.N_a_max, bool) or not isinstance(self.N_a_max, int) or self.N_a_max < 1:
             raise ValueError(f"N_a_max must be an int >= 1, got {self.N_a_max!r}")
+        if isinstance(self.B_h_max, bool) or not isinstance(self.B_h_max, (int, float)) or not math.isfinite(self.B_h_max) \
+                or self.B_h_max <= 0:
+            raise ValueError(f"B_h_max must be a finite number > 0, got {self.B_h_max!r}")
+        if self.limits.B_h_bus_hours > self.B_h_max:
+            raise ValueError(f"default B_h {self.limits.B_h_bus_hours} exceeds B_h_max {self.B_h_max}")
         if self.limits.N_a_actions > self.N_a_max:
             raise ValueError(f"default N_a_actions {self.limits.N_a_actions} exceeds N_a_max {self.N_a_max}")
 
@@ -596,6 +602,8 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
     def limits_from(body: OptimizeBody) -> Limits:
         if body.N_a > backend.N_a_max:
             raise HTTPException(422, f"N_a {body.N_a} exceeds N_a_max {backend.N_a_max}")
+        if body.B_h > backend.B_h_max:
+            raise HTTPException(422, f"B_h {body.B_h} exceeds B_h_max {backend.B_h_max}")
         return Limits(body.B_h, body.K, body.N_a, backend.limits.max_exact_packages)
 
     def run_optimize(limits: Limits, profile: str) -> OptimizationResult:
@@ -641,6 +649,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return stamp({
             "limits": jsonable(backend.limits),
             "N_a_max": backend.N_a_max,
+            "B_h_max": backend.B_h_max,
             "findings": {p: text for p in PROFILES if (text := finding(p)) is not None},
             "index": {p: dict(v) for p, v in index_status.items()},
             "compare_ayna": dict(compare_status),

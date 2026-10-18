@@ -176,8 +176,8 @@
 
     let limitsLoaded = false;
 
-    function bhMax(s) {  // the slider reaches the AYNA reference budget (compare_ayna) when it exceeds 70
-      return Math.max(70, (s && s.reference_bus_hours) || 0);
+    function bhMax(s) {  // budget slider maximum: config/limits.yaml B_h_max via /state
+      return s ? s.B_h_max : form.B_h;
     }
 
     function render() {
