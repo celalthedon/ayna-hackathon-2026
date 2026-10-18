@@ -198,6 +198,57 @@ def test_compare_ayna_is_computed_once_at_startup_and_after_an_index_change(tmp_
     assert len(runs) == 2 and third["verdict"] == first["verdict"] and third["reference"] == first["reference"]
 
 
+# --- #35 P1-a: the stored comparison obeys the same gate rule as /optimize ---
+
+def test_compare_ayna_after_the_gate_is_deleted_is_409(tmp_path, counter):
+    fill(tmp_path)
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert c.post("/decision/compare_ayna", json={"profile": "P"}).status_code == 200
+    (tmp_path / "objectives" / "objective_decision_P.json").unlink()
+    r = c.post("/decision/compare_ayna", json={"profile": "P"})
+    assert r.status_code == 409 and r.json()["detail"] == optimize(c, 24).json()["detail"] == "objective not committed"
+
+
+def test_compare_ayna_for_a_gate_of_another_model_is_409(tmp_path, counter):
+    from decision_testkit import h, write_objective
+    fill(tmp_path)
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert c.post("/decision/compare_ayna", json={"profile": "P"}).status_code == 200
+    write_objective(tmp_path / "objectives", "count", "P", {"normal": h("x"), "disrupted": h("y")})
+    r = c.post("/decision/compare_ayna", json={"profile": "P"})
+    assert r.status_code == 409 and r.json()["detail"] == "objective decided for another model"
+
+
+def test_compare_ayna_after_the_gate_changes_is_recomputed(tmp_path, counter):
+    from decision_testkit import FIXTURE_HASHES, write_objective
+    fill(tmp_path)
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))["optimizer"]["objective"] == "count"
+    write_objective(tmp_path / "objectives", "sum", "P", FIXTURE_HASHES)  # same model, other objective
+    r = strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))
+    assert r["optimizer"]["objective"] == "sum"  # never the old result
+
+
+# --- #35 P1-b: startup never routes; an incomplete index makes compare_ayna unavailable ---
+
+def test_incomplete_index_startup_makes_no_evaluation_and_reports_it(tmp_path, counter):
+    path, _ = fill(tmp_path)
+    _rewrite(path, lambda ix: ix["rows"].remove(_row(ix, ["A", "C"])))
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert counter.calls == 0  # startup made no evaluate call
+    state = strict_json(c.get("/decision/state"))
+    assert state["index"]["P"]["rows"] == 11 and state["compare_ayna"]["P"] == "unavailable: incomplete cache"
+    r = c.post("/decision/compare_ayna", json={"profile": "P"})
+    assert r.status_code == 409 and r.json()["detail"] == "compare_ayna unavailable: incomplete cache"
+    assert counter.calls == 0
+
+
+def test_complete_index_startup_is_ready_without_evaluation(tmp_path, counter):
+    fill(tmp_path)
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert counter.calls == 0 and strict_json(c.get("/decision/state"))["compare_ayna"]["P"] == "ready"
+
+
 @pytest.fixture
 def counter():
     return CountingEvaluators(FIXTURE)
