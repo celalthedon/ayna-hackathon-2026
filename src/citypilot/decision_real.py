@@ -336,4 +336,15 @@ def real_backend(model: Any, cache_dir: str | Path, car_distances: str | Path | 
         else load_od_car_distances(verified_file(car_distances, car_distances_sha256)),
         patches_for=lambda scenario: make_catalog_patches(candidates, catalog, scenario),
         catalog_hash=catalog_hash(candidates, exclusions),
+        od_population=od_population(model),
     )
+
+
+def od_population(model: Any) -> int:
+    """ODs per evaluation (the same for P and B on one model); fails loudly if the profiles differ."""
+    from citypilot.routing_engine import get_od_table
+
+    sizes = {profile: len(get_od_table(model, profile)) for profile in PROFILES}
+    if len(set(sizes.values())) != 1:
+        raise ValueError(f"OD tables differ between profiles: {sizes}")
+    return sizes["P"]

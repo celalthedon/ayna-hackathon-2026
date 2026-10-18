@@ -138,6 +138,31 @@ def test_a_malformed_row_is_rejected_and_the_file_cache_serves(tmp_path, counter
     assert isinstance(alt[("A", "C")]["capped_time_sum"], float)  # never the malformed value
 
 
+OUT_OF_BOUNDS = {
+    "within_counts 9999": lambda ix: _row(ix, ["A", "C"])["within_counts"].update({"45": 9999}),
+    "capped_time_sum -1": lambda ix: _row(ix, ["A", "C"]).update(capped_time_sum=-1.0),
+    "capped_time_sum above population x cap": lambda ix: _row(ix, ["A", "C"]).update(capped_time_sum=1e9),
+    "negative runtime": lambda ix: _row(ix, ["A", "C"]).update(duration_ms=-5.0),
+    "NaN capped_time_sum": lambda ix: _row(ix, ["A", "C"]).update(capped_time_sum=float("nan")),
+    "negative bus_hours": lambda ix: _row(ix, ["A", "C"]).update(bus_hours=-1.0),
+}
+
+
+@pytest.mark.parametrize("damage", sorted(OUT_OF_BOUNDS))
+def test_an_out_of_bounds_row_is_rejected_and_the_recommendation_stays(tmp_path, counter, caplog, damage):
+    path, _ = fill(tmp_path)
+    expected = strict_json(optimize(client_for(four_action_backend(tmp_path, counter)), 24))
+    _rewrite(path, OUT_OF_BOUNDS[damage])  # json.dumps writes NaN as the NaN token
+    with caplog.at_level(logging.WARNING, logger="citypilot.decision"):
+        c = client_for(four_action_backend(tmp_path, counter))
+    status = strict_json(c.get("/decision/state"))["index"]["P"]
+    assert (status["loaded"], status["rows"], status["dropped"]) == (True, 11, 1)
+    assert any("wrong type or value" in m for m in caplog.messages)
+    r = strict_json(optimize(c, 24))
+    assert r["recommendation"] == expected["recommendation"] and r["alternatives"] == expected["alternatives"]
+    assert counter.calls == 0  # the rejected package came from its validated full file; nothing was routed
+
+
 def test_duplicate_rows_are_all_rejected(tmp_path, counter, caplog):
     path, _ = fill(tmp_path)
     _rewrite(path, lambda ix: ix["rows"].append(dict(_row(ix, ["A", "C"]), capped_time_sum=1.0)))

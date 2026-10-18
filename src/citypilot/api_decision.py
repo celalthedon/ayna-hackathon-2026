@@ -107,6 +107,7 @@ class DecisionBackend:
     requires_bike: frozenset[str] = frozenset()
     findings: Mapping[str, Finding] | None = None  # per profile; shown (not an error) only for this model and catalog
     catalog_hash: str | None = None  # identity of the candidate catalog (decision_real.catalog_hash)
+    od_population: int | None = None  # ODs per evaluation; bounds the index rows' counts and capped sums
 
     def __post_init__(self):
         if set(self.model_hashes) != set(PROFILES):
@@ -330,8 +331,10 @@ def _is_int(v, optional=False) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def index_row_problem(row) -> str | None:
-    """Why an index row is malformed (missing field or wrong type), or None. Rows are checked before use."""
+def index_row_problem(row, od_population: int | None = None) -> str | None:
+    """Why an index row is malformed (missing field, wrong type or out of bounds), or None. Rows are checked before
+    use. Bounds: within counts are integers in [0, OD population], the capped sum is finite and in
+    [0, OD population x cap], runtimes and bus-hours/vehicles/actions are finite and >= 0 (NaN and inf are rejected)."""
     if not isinstance(row, dict):
         return "row is not an object"
     required = {"config_hash", "candidate_ids", "within_counts", "capped_time_sum", "bus_hours", "vehicles", "actions",
@@ -344,13 +347,16 @@ def index_row_problem(row) -> str | None:
         "config_hash": isinstance(h, str) and len(h) == 64 and set(h) <= _HEX,
         "candidate_ids": isinstance(row["candidate_ids"], list) and all(isinstance(i, str) for i in row["candidate_ids"]),
         "within_counts": isinstance(row["within_counts"], dict) and bool(row["within_counts"])
-        and all(isinstance(t, str) and t.isdigit() and _is_int(n) and n >= 0 for t, n in row["within_counts"].items()),
-        "capped_time_sum": _is_number(row["capped_time_sum"]),
-        "bus_hours": _is_number(row["bus_hours"], optional=True),
-        "vehicles": _is_int(row["vehicles"], optional=True),
+        and all(isinstance(t, str) and t.isdigit() and _is_int(n) and 0 <= n <= (od_population if od_population
+                is not None else n) for t, n in row["within_counts"].items()),
+        "capped_time_sum": _is_number(row["capped_time_sum"]) and row["capped_time_sum"] >= 0
+        and (od_population is None or not _is_number(row["cap_min"])
+             or row["capped_time_sum"] <= od_population * row["cap_min"] + 1e-6),
+        "bus_hours": _is_number(row["bus_hours"], optional=True) and (row["bus_hours"] is None or row["bus_hours"] >= 0),
+        "vehicles": _is_int(row["vehicles"], optional=True) and (row["vehicles"] is None or row["vehicles"] >= 0),
         "actions": _is_int(row["actions"]) and row["actions"] >= 0,
         "feasible": isinstance(row["feasible"], bool),
-        "duration_ms": _is_number(row["duration_ms"]),
+        "duration_ms": _is_number(row["duration_ms"]) and row["duration_ms"] >= 0,
         "warnings": isinstance(row["warnings"], list) and all(isinstance(w, str) for w in row["warnings"]),
         "primary_t_min": _is_int(row["primary_t_min"]),
         "cap_min": _is_number(row["cap_min"]),
@@ -556,7 +562,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             return
         for row in rows:
             try:
-                problem_text = index_row_problem(row)
+                problem_text = index_row_problem(row, backend.od_population)
                 if problem_text:
                     raise ValueError(problem_text)
                 if row["config_hash"] in duplicated:
