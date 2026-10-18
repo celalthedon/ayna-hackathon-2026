@@ -326,3 +326,13 @@ def test_real_startup_then_state_and_optimize_under_2_s(real, tmp_path):
         compare_s = time.perf_counter() - started
         print(f"compare_ayna {profile} {compare_s:.3f} s")
         assert c.status_code == 200 and compare_s < 0.1
+    for profile in ("P", "B"):  # stored stress of the default recommendation (precompute --stress)
+        if not list(REAL_CACHE.glob(f"stress_{profile}_*.json")):
+            continue
+        package = client.post("/decision/optimize", json={"B_h": 30, "K": 2.0, "N_a": 3, "profile": profile}).json()
+        started = time.perf_counter()
+        r = client.post("/decision/stress", json={"package_ids": package["recommendation"]["candidate_ids"],
+                                                  "profile": profile})
+        stress_s = time.perf_counter() - started
+        print(f"stress {profile} {stress_s:.3f} s")
+        assert r.status_code == 200 and r.json()["status"] == "ok" and stress_s < 0.1

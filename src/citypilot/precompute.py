@@ -310,6 +310,34 @@ def run(ctx: Context, cache_dir: Path, workers: int = 1, limit: int | None = Non
     return entry
 
 
+def precompute_stress(bundle: Path, config: Path, profile: str, cache_dir: Path) -> dict:
+    """Through the real decision API on the cache: /optimize at the defaults, then /stress of its recommendation,
+    which evaluates into the normal validated cache and writes the profile's stress file."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from citypilot.api_decision import build_decision_router, stress_name
+    from citypilot.decision_real import real_backend, real_limits
+    from citypilot.routing_engine import load_model
+
+    backend = real_backend(load_model(bundle, config), cache_dir)
+    app = FastAPI()
+    app.include_router(build_decision_router(backend))
+    client = TestClient(app)
+    limits = real_limits()
+    rec = client.post("/decision/optimize", json={"B_h": limits.B_h_bus_hours, "K": limits.K_new_infra_km,
+                                                  "N_a": limits.N_a_actions, "profile": profile})
+    rec.raise_for_status()
+    package = rec.json()["recommendation"]["candidate_ids"]
+    started = time.perf_counter()
+    r = client.post("/decision/stress", json={"package_ids": package, "profile": profile})
+    r.raise_for_status()
+    path = Path(cache_dir) / stress_name(profile, cache_identity(backend.config_hash, backend.input_hashes),
+                                         Scenario(1.0, 1.0, backend.H_hours), backend.catalog_hash)
+    return {"profile": profile, "package": package, "status": r.json()["status"], "stress_s": time.perf_counter() - started,
+            "file": path.name if path.exists() else None}
+
+
 def findings_from_manifest(path: Path, model_identity: Mapping, catalog_hash: str | None) -> dict:
     """Per-profile Findings for DecisionBackend.findings, only from runs computed for this model and catalog."""
     from citypilot.api_decision import Finding
@@ -334,6 +362,8 @@ def main(argv=None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="enumerate only and print counts per N_a")
     parser.add_argument("--limit", type=int, help="evaluate only the first N packages (pilot)")
     parser.add_argument("--index-only", action="store_true", help="only (re)build the index from the cache")
+    parser.add_argument("--stress", action="store_true",
+                        help="store the /stress result of the default recommendation (stress_<profile>_<hash>.json)")
     parser.add_argument("--m-variants", choices=M_VARIANT_CHOICES, default="all")
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
     parser.add_argument("--bundle", type=Path, default=os.environ.get("CITYPILOT_ARTIFACT_DIR"))
@@ -341,6 +371,9 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.bundle is None or args.config is None:
         parser.error("--bundle and --config (or CITYPILOT_ARTIFACT_DIR / CITYPILOT_CONFIG_DIR) are required")
+    if args.stress:
+        print(json.dumps(precompute_stress(args.bundle, args.config, args.profile, args.cache_dir), indent=2))
+        return 0
     ctx = build_context(args.bundle, args.config, args.profile, args.m_variants)
     if args.dry_run:
         packages = plan(ctx.problem)
