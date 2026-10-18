@@ -16,7 +16,7 @@ Updated: 2026-10-18, resumed validation and publication. The existing implementa
 
   Actual result: **33 passed, 3 skipped, 1 warning in 10.96 s**. The three existing opt-in bundle tests are skipped because `CITYPILOT_TEST_BUNDLE` was not set: real baseline terminal journey, external synthetic supplement load, and repository M config/decision endpoint composition. No full engine parity rerun, optimization or precompute was performed. The warning is the existing Starlette/httpx TestClient deprecation; no dependencies were installed or changed.
 - Existing **20 passing Node checks** remain valid: no application/test code changed in this resumed session, so they were not repeated. User-reported live verification remains separate from automated tests. Browser automation/screenshots have not been newly claimed.
-- Checked GitHub for an existing PR on this branch: none. Prepared description updated with actual Python validation. Publication outcome is appended after the push/PR operation.
+- Published the existing branch with a normal, non-force push. PR opened against main: **https://github.com/celalthedon/ayna-hackathon-2026/pull/23**. Prepared description includes the actual Python result and remaining decision gaps. No merge or deployment performed; authentication and focused Python execution are no longer blockers.
 
 The remaining sections retain earlier checkpoint history, including restrictions that were resolved by approved host execution in this resumed session.
 
