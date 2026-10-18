@@ -60,8 +60,8 @@ def four_action_backend(tmp_path, counter, reference=("B", "C", "D"), objective=
         thresholds_min=(40, 45, 50),
         primary_t_min=lim["T_min"],
         cap_min=lim["C_min"],
-        objective_dir=objective_dir,
-        model_hashes=FIXTURE_HASHES,
+        objective_dirs=(objective_dir,),
+        model_hashes={profile: FIXTURE_HASHES for profile in ("P", "B")},
         model_version="fixture",
         od_set_id="fixture-ods",
         closure_id="closure-28may-nizami",
@@ -103,7 +103,9 @@ def client(tmp_path, counter):
 
 def test_state(client):
     s = strict_json(client.get("/decision/state"))
-    assert s["objective"] == {"P": {"value": "count", "status": "committed"}, "B": {"value": "count", "status": "committed"}}
+    assert {p: (o["value"], o["status"]) for p, o in s["objective"].items()} == {"P": ("count", "committed"),
+                                                                              "B": ("count", "committed")}
+    assert s["objective"]["P"]["objective_dir"].endswith("objectives")
     assert s["limits"]["B_h_bus_hours"] == 24 and s["limits"]["N_a_actions"] == 3
     assert s["profiles"] == ["P", "B"]
     assert s["config_hash"] == "fixture_4action"
