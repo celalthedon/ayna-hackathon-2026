@@ -37,6 +37,7 @@ from citypilot.decision_engine import (
     enumerate_packages,
     is_feasible,
     load_objective,
+    select_objective_dir,
     mean_car_distance_km,
     no_patches,
     optimize,
@@ -73,8 +74,8 @@ class DecisionBackend:
     thresholds_min: tuple[int, ...]
     primary_t_min: int
     cap_min: float
-    objective_dir: Path  # objective_decision_<profile>.json per profile
-    model_hashes: Mapping[str, str]  # current normal / disrupted config_hash
+    objective_dirs: tuple[Path, ...]  # gate folders; per profile the one decided on this model is used
+    model_hashes: Mapping[str, Mapping[str, str]]  # per profile: current normal / disrupted config_hash
     model_version: str
     od_set_id: str
     closure_id: str
@@ -88,6 +89,15 @@ class DecisionBackend:
     od_car_distance_km: Mapping[str, OdCarDistance] | None = None  # OD table car_distance_km
     patches_for: Callable[[Scenario], Callable[[tuple[str, ...]], tuple[RoutingPatch, ...]]] = lambda scenario: no_patches
     requires_bike: frozenset[str] = frozenset()
+
+    def __post_init__(self):
+        if set(self.model_hashes) != set(PROFILES):
+            raise ValueError(f"model_hashes needs one normal/disrupted pair per profile {PROFILES}, got {sorted(self.model_hashes)}")
+        for profile, pair in self.model_hashes.items():
+            if set(pair) != {"normal", "disrupted"}:
+                raise ValueError(f"model_hashes[{profile}] needs normal and disrupted, got {sorted(pair)}")
+        if not self.objective_dirs:
+            raise ValueError("objective_dirs is empty")
 
 
 # --- request bodies (out of range -> 422) ---
@@ -309,8 +319,8 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return DecisionProblem(
             candidate_ids=backend.candidate_ids, exclusions=backend.exclusions, prerequisites=backend.prerequisites,
             distance_m=backend.distance_m, limits=limits, thresholds_min=backend.thresholds_min,
-            primary_t_min=backend.primary_t_min, cap_min=backend.cap_min, objective_dir=backend.objective_dir,
-            model_hashes=backend.model_hashes, context=context, resources=backend.resources_for(scenario),
+            primary_t_min=backend.primary_t_min, cap_min=backend.cap_min, objective_dir=objective_dir_for(profile),
+            model_hashes=backend.model_hashes[profile], context=context, resources=backend.resources_for(scenario),
             requires_bike=backend.requires_bike,
         )
 
@@ -326,9 +336,12 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
                 cache.evaluate(build_request(widest, package))
         return cache.evaluate
 
+    def objective_dir_for(profile: str) -> Path:
+        return select_objective_dir(backend.objective_dirs, profile, backend.model_hashes[profile])
+
     def committed_objective(profile: str) -> str:
         try:
-            return load_objective(backend.objective_dir, profile, backend.model_hashes)
+            return load_objective(objective_dir_for(profile), profile, backend.model_hashes[profile])
         except FileNotFoundError:
             raise HTTPException(409, OBJECTIVE_NOT_COMMITTED)
         except ObjectiveModelMismatch:
@@ -357,8 +370,9 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         objective = {}
         for profile in PROFILES:
             try:
-                objective[profile] = {"value": load_objective(backend.objective_dir, profile, backend.model_hashes),
-                                      "status": "committed"}
+                directory = objective_dir_for(profile)
+                objective[profile] = {"value": load_objective(directory, profile, backend.model_hashes[profile]),
+                                      "status": "committed", "objective_dir": str(directory)}
             except ObjectiveModelMismatch:
                 objective[profile] = {"value": None, "status": OBJECTIVE_OTHER_MODEL}
             except (FileNotFoundError, ValueError):
@@ -368,7 +382,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             "limits": jsonable(backend.limits),
             "objective": objective,
             "input_hashes": dict(backend.input_hashes),
-            "model_hashes": dict(backend.model_hashes),
+            "model_hashes": {p: dict(pair) for p, pair in backend.model_hashes.items()},
             "profiles": list(PROFILES),
             "thresholds_min": list(backend.thresholds_min),
             "primary_t_min": backend.primary_t_min,
