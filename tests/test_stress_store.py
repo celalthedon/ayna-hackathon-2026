@@ -80,3 +80,50 @@ def test_another_package_is_computed_live_and_not_written(tmp_path, runs):
     stress(c, other)
     assert len(runs) == 2
     assert [f.read_text() for f in (tmp_path / "cache").glob("stress_P_*.json")] == before
+
+
+# --- #35 P1-a applied to stored /stress: the gate is validated like /optimize; any gate change recomputes ---
+
+def test_stress_after_the_gate_is_deleted_is_409(tmp_path, runs):
+    c = client_for(backend(tmp_path))
+    package = default_package(c)
+    stress(c, package)
+    (tmp_path / "objectives" / "objective_decision_P.json").unlink()
+    r = c.post("/decision/stress", json={"package_ids": package, "profile": "P"})
+    assert r.status_code == 409 and r.json()["detail"] == "objective not committed" and len(runs) == 1
+
+
+def test_stress_for_a_gate_of_another_model_is_409(tmp_path, runs):
+    from decision_testkit import h, write_objective as kit_write
+    c = client_for(backend(tmp_path))
+    package = default_package(c)
+    stress(c, package)
+    kit_write(tmp_path / "objectives", "count", "P", {"normal": h("x"), "disrupted": h("y")})
+    r = c.post("/decision/stress", json={"package_ids": package, "profile": "P"})
+    assert r.status_code == 409 and r.json()["detail"] == "objective decided for another model"
+
+
+def test_an_altered_gate_file_recomputes_never_the_old_result(tmp_path, runs):
+    b = backend(tmp_path)
+    c = client_for(b)
+    package = default_package(c)
+    stress(c, package)
+    gate = tmp_path / "objectives" / "objective_decision_P.json"
+    record = json.loads(gate.read_text())
+    gate.write_text(json.dumps(record | {"note": "re-decided"}))  # same objective and hashes, other gate file
+    stress(c, package)
+    assert len(runs) == 2  # recomputed and stored under the new gate
+    stress(client_for(b), package)  # a new router serves that file (same gate now)
+    assert len(runs) == 2
+    gate.write_text(json.dumps(record | {"note": "re-decided again"}))
+    stress(client_for(b), package)  # the file stored under the previous gate is not served
+    assert len(runs) == 3
+
+
+def test_another_catalog_recomputes(tmp_path, runs):
+    b = backend(tmp_path)
+    c = client_for(b)
+    stress(c, default_package(c))
+    c2 = client_for(dataclasses.replace(b, catalog_hash="design_only-catalog"))
+    stress(c2, default_package(c2))
+    assert len(runs) == 2

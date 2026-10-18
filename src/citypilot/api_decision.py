@@ -811,8 +811,9 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
     stress_store: dict[str, dict] = {}  # canonical stress key -> result before stamping
     default_recommendation: dict[str, tuple[tuple, tuple[str, ...]]] = {}  # profile -> (fingerprint, package)
 
-    def stress_key(profile: str, package_ids, objective: str) -> dict:
-        """Everything a stress result depends on: model, profile, package, grid, default limits, objective."""
+    def stress_key(profile: str, package_ids, gate: dict) -> dict:
+        """Everything a stress result depends on: model, catalog, profile, package, grid, default limits and the
+        gate (objective, gate file SHA-256, hash pair) as /optimize validates it."""
         grid = backend.stress_grid
         grid_def = None if grid is None else {"speed_levels_kmh": dict(grid.speed_levels_kmh),
                                               "headway_levels_min": {g: dict(v) for g, v in grid.headway_levels_min.items()},
@@ -822,14 +823,14 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             "package_id": package_id(package_ids),
             "grid_hash": hashlib.sha256(_canonical(grid_def).encode()).hexdigest()[:16],
             "limits": {f: getattr(backend.limits, f) for f in ("B_h_bus_hours", "K_new_infra_km", "N_a_actions")},
-            "objective": objective, "gate_hashes": dict(backend.model_hashes[profile])}))
+            "catalog_hash": backend.catalog_hash, "gate": gate}))
 
     def stress_path(profile: str) -> Path:
         return Path(backend.cache_dir) / stress_name(profile, model_identity, default_scenario(), backend.catalog_hash)
 
     def recommendation_at_defaults(profile: str) -> tuple[str, ...]:
         """Default recommendation (config/limits.yaml); recomputed when the index changes."""
-        fingerprint = compare_fingerprint(profile)
+        fingerprint = compare_fingerprint(profile, gate_identity(profile))
         held = default_recommendation.get(profile)
         if held is None or held[0] != fingerprint:
             scenario = default_scenario()
@@ -845,9 +846,9 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         try:
             stored = json.loads(path.read_text())
             key = stress_key(profile, stored["key"]["package_id"].split("+") if stored["key"]["package_id"] != "NO_ACTION"
-                             else (), committed_objective(profile))
+                             else (), gate_identity(profile))
             if json.loads(_canonical(stored["key"])) != key:
-                log.warning("stress %s ignored: model, grid, limits or objective changed", path.name)
+                log.warning("stress %s ignored: model, catalog, grid, limits or gate changed", path.name)
                 return
             stress_store[_canonical(key)] = stored["result"]
         except (OSError, ValueError, KeyError, TypeError, HTTPException) as e:
@@ -855,8 +856,8 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
 
     @router.post("/stress")
     def post_stress(body: PackageBody) -> dict:
-        objective = committed_objective(body.profile)
-        key = stress_key(body.profile, body.package_ids, objective)
+        gate = gate_identity(body.profile)  # 409 like /optimize when the gate is missing, invalid or for another model
+        key = stress_key(body.profile, body.package_ids, gate)
         name = _canonical(key)
         if name not in stress_store:
             result = compute_stress(body.profile, body.package_ids)
