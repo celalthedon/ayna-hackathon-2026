@@ -4,8 +4,9 @@
     check it (anyone):     python tools/verify_cache_sample.py check --bundle <bundle> --list check_list.json
 
 `check` rebuilds each request on this machine (its config_hash must equal the listed one: same model,
-OD set, patches and thresholds), evaluates it fresh with the routing engine, and compares within_counts
-(exact), capped_time_sum and every OD's status and minutes (|delta| reported, tolerance 1e-6 min).
+OD set, patches and thresholds), evaluates it fresh with the routing engine and compares the canonical
+OD-level result (SHA-256 of every OD's status, minutes and capped_minutes, sorted by od_id; must be equal),
+within_counts (exact), capped_time_sum and, against the stored file, every OD (|delta| reported, 1e-6 min).
 Config is always supplements/m_services_v1/config (the M-supplement model).
 """
 import argparse
@@ -35,8 +36,29 @@ SAMPLE = {  # 5 per profile: no action, recommendations, compare_ayna packages, 
 
 
 def ods_digest(result) -> str:
-    rows = [[o.od_id, o.status, o.minutes] for o in sorted(result.od_results, key=lambda o: o.od_id)]
-    return hashlib.sha256(json.dumps(rows, separators=(",", ":")).encode()).hexdigest()
+    """Canonical OD-level result: SHA-256 of [od_id, status, minutes, capped_minutes] for every OD, sorted by od_id."""
+    rows = [[o.od_id, o.status, o.minutes, o.capped_minutes] for o in sorted(result.od_results, key=lambda o: o.od_id)]
+    return hashlib.sha256(json.dumps(rows, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def compare_item(item: dict, config_hash: str, fresh, stored=None) -> dict:
+    """One check-list item vs a fresh evaluation (and the stored cache file when present)."""
+    row = {"profile": item["profile"], "candidate_ids": item["candidate_ids"],
+           "config_hash_equal": config_hash == item["config_hash"],
+           "ods_sha256_equal": ods_digest(fresh) == item["ods_sha256"],
+           "od_count_equal": len(fresh.od_results) == item["od_count"],
+           "within_counts_equal": {str(t): n for t, n in fresh.within_counts.items()} == item["within_counts"],
+           "capped_time_sum_delta": fresh.capped_time_sum - item["capped_time_sum"]}
+    if stored is not None:
+        by_id = {o.od_id: o for o in stored.od_results}
+        deltas = [abs(o.minutes - by_id[o.od_id].minutes) for o in fresh.od_results
+                  if o.minutes is not None and by_id[o.od_id].minutes is not None]
+        row["status_differences"] = sum(o.status != by_id[o.od_id].status for o in fresh.od_results)
+        row["max_abs_minutes_delta"] = max(deltas, default=0.0)
+    row["ok"] = (row["config_hash_equal"] and row["ods_sha256_equal"] and row["od_count_equal"]
+                 and row["within_counts_equal"] and abs(row["capped_time_sum_delta"]) <= 1e-6
+                 and row.get("status_differences", 0) == 0 and row.get("max_abs_minutes_delta", 0.0) <= MINUTES_TOL)
+    return row
 
 
 def setup(bundle: Path):
@@ -82,23 +104,8 @@ def check(args) -> int:
     report, bad = [], 0
     for item in listed["items"]:
         request = build_request(problems[item["profile"]], tuple(item["candidate_ids"]))
-        fresh = evaluate(request)
-        stored = cache.lookup_full(request)
-        row = {"profile": item["profile"], "candidate_ids": item["candidate_ids"],
-               "config_hash_equal": request.config_hash == item["config_hash"],
-               "within_counts_equal": {str(t): n for t, n in fresh.within_counts.items()} == item["within_counts"],
-               "capped_time_sum_delta": fresh.capped_time_sum - item["capped_time_sum"],
-               "ods_sha256_equal": ods_digest(fresh) == item["ods_sha256"]}
-        if stored is not None:
-            by_id = {o.od_id: o for o in stored.od_results}
-            deltas = [abs(o.minutes - by_id[o.od_id].minutes) for o in fresh.od_results
-                      if o.minutes is not None and by_id[o.od_id].minutes is not None]
-            row["status_differences"] = sum(o.status != by_id[o.od_id].status for o in fresh.od_results)
-            row["max_abs_minutes_delta"] = max(deltas, default=0.0)
-        ok = (row["config_hash_equal"] and row["within_counts_equal"] and abs(row["capped_time_sum_delta"]) <= 1e-6
-              and row.get("status_differences", 0) == 0 and row.get("max_abs_minutes_delta", 0.0) <= MINUTES_TOL)
-        row["ok"] = ok
-        bad += not ok
+        row = compare_item(item, request.config_hash, evaluate(request), cache.lookup_full(request))
+        bad += not row["ok"]
         report.append(row)
     out = {"platform": platform.platform(), "python": sys.version.split()[0], "items": report, "failed": bad}
     print(json.dumps(out, indent=2))
