@@ -201,3 +201,14 @@ def test_reader_rejects_other_extra_columns(tmp_path):
                     "OD1,origin:a,4.0,modelled,1,1,1\n", encoding="utf-8")
     with pytest.raises(ValueError, match="columns"):
         load_od_car_distances(path)
+
+
+from citypilot.decision_engine import car_distance_coverage  # noqa: E402
+
+
+def test_car_distance_coverage_counts_restored_and_missing_by_reason():
+    table = {"OD1": OdCarDistance("OD1", None, "no_path", None, 1.0, 2.0),
+             "OD3": OdCarDistance("OD3", 8.0, "modelled", 1.0, 1.0, 1.0)}
+    assert car_distance_coverage(AFTER, BEFORE, table) == {"restored": 2, "missing": 1, "by_reason": {"no_path": 1}}
+    assert car_distance_coverage(AFTER, BEFORE, None) == {"restored": 2, "missing": 2, "by_reason": {"absent": 2}}
+    assert car_distance_coverage(BEFORE, BEFORE, table) == {"restored": 0, "missing": 0, "by_reason": {}}

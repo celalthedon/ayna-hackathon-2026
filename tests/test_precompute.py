@@ -18,7 +18,7 @@ from test_optimize import FIXTURE, problem_from  # noqa: E402
 
 MANIFEST_FIELDS = {"identity", "catalog_hash", "timestamp", "git_commit", "model_version", "bundle_hash", "od_hash", "libraries", "profile",
                    "m_variants", "N_a_max", "counts_by_N_a", "limit", "counts", "failed_ids", "workers",
-                   "peak_rss_kb_per_worker", "wall_s", "duration_ms", "max_package_check", "finding", "log"}
+                   "peak_rss_kb_per_worker", "wall_s", "duration_ms", "max_package_check", "finding", "log", "index"}
 
 
 class Counting:

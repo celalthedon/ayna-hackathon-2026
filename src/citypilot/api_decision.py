@@ -8,7 +8,8 @@ import json
 import logging
 import math
 import uuid
-from dataclasses import dataclass, fields, is_dataclass
+import weakref
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Callable, Literal, Mapping
 
@@ -34,13 +35,16 @@ from citypilot.decision_engine import (
     StressGrid,
     StressSetup,
     build_request,
+    car_distance_coverage,
     co2_for_package,
+    compare_rank_keys,
     enumerate_packages,
     is_feasible,
     load_objective,
     select_objective_dir,
     mean_car_distance_km,
     no_patches,
+    objective_path_for,
     optimize,
     rank_key,
     remove_action,
@@ -95,6 +99,7 @@ class DecisionBackend:
     evaluator_for: Callable[[str, Scenario], Callable[[RoutingRequest], EvaluationResult]]  # (profile, scenario)
     cache_dir: Path
     N_a_max: int  # slider / enumeration maximum; config/limits.yaml N_a_max
+    B_h_max: float  # largest B_h accepted (budget slider maximum); config/limits.yaml B_h_max
     reference_package_ids: tuple[str, ...] | None = None  # the AYNA real response, from the catalog
     stress_grid: StressGrid | None = None
     co2: Co2Inputs | None = None
@@ -114,6 +119,11 @@ class DecisionBackend:
             raise ValueError("objective_dirs is empty")
         if isinstance(self.N_a_max, bool) or not isinstance(self.N_a_max, int) or self.N_a_max < 1:
             raise ValueError(f"N_a_max must be an int >= 1, got {self.N_a_max!r}")
+        if isinstance(self.B_h_max, bool) or not isinstance(self.B_h_max, (int, float)) or not math.isfinite(self.B_h_max) \
+                or self.B_h_max <= 0:
+            raise ValueError(f"B_h_max must be a finite number > 0, got {self.B_h_max!r}")
+        if self.limits.B_h_bus_hours > self.B_h_max:
+            raise ValueError(f"default B_h {self.limits.B_h_bus_hours} exceeds B_h_max {self.B_h_max}")
         if self.limits.N_a_actions > self.N_a_max:
             raise ValueError(f"default N_a_actions {self.limits.N_a_actions} exceeds N_a_max {self.N_a_max}")
 
@@ -121,7 +131,7 @@ class DecisionBackend:
 # --- request bodies (out of range -> 422) ---
 
 class OptimizeBody(BaseModel):
-    B_h: float = Field(ge=0, le=70, description="bus-hour budget")
+    B_h: float = Field(ge=0, allow_inf_nan=False, description="bus-hour budget; any finite value (limits only filter)")
     K: float = Field(ge=0, le=3, description="new infrastructure km budget")
     N_a: int = Field(ge=1, description="maximum number of actions; at most the backend's N_a_max")
     profile: Literal["P", "B"]
@@ -241,6 +251,128 @@ def _answers(result: EvaluationResult, request: RoutingRequest) -> bool:
     return True
 
 
+
+COMPARE_INCOMPLETE = "unavailable: incomplete cache"
+INDEX_VERSION = 2  # 2: header and file name carry the catalog identity (catalog_hash, m_variants)
+INDEX_IDENTITY_FIELDS = ("contract_version", "model_version", "od_set_id", "state", "profile", "config_hash",
+                         "primary_t_min", "cap_min")
+
+
+@dataclass(frozen=True)
+class IndexedResult:
+    """Summary of one evaluation from the cache index: everything ranking needs, without the OD rows.
+    od_results is read lazily from the full cache file (map, journey inspector, removal detail, CO2)."""
+    contract_version: str
+    model_version: str
+    od_set_id: str
+    state: str
+    profile: str
+    config_hash: str
+    within_counts: Mapping[int, int]
+    capped_time_sum: float
+    primary_t_min: int
+    cap_min: float
+    duration_ms: float
+    warnings: tuple[str, ...]
+    load_full: Callable[[], EvaluationResult] = field(compare=False, repr=False)
+
+    @property
+    def od_results(self):
+        return self.load_full().od_results
+
+    def validate_request(self, request: RoutingRequest, config_hash: str | None = None) -> None:
+        """Same identity checks as EvaluationResult.validate_request; raises ValueError on a mismatch.
+        config_hash: the request's hash if already computed (it is expensive to recompute)."""
+        for name in INDEX_IDENTITY_FIELDS:
+            got = config_hash if name == "config_hash" and config_hash is not None else getattr(request, name)
+            if getattr(self, name) != got:
+                raise ValueError(f"Request/index mismatch: {name}")
+        if set(self.within_counts) != set(request.thresholds_min):
+            raise ValueError("Request/index thresholds mismatch")
+
+
+def index_row(result: EvaluationResult, candidate_ids: tuple[str, ...], resources: ResourceResult,
+              feasible: bool) -> dict:
+    deltas = [s.delta_vehicles for s in resources.per_service]
+    return {"config_hash": result.config_hash, "candidate_ids": list(candidate_ids),
+            "within_counts": {str(t): n for t, n in result.within_counts.items()},
+            "capped_time_sum": result.capped_time_sum, "bus_hours": resources.added_bus_hours,
+            "vehicles": None if any(d is None for d in deltas) else sum(deltas),
+            "actions": resources.action_count, "feasible": feasible,
+            **{name: getattr(result, name) for name in INDEX_IDENTITY_FIELDS if name != "config_hash"},
+            "duration_ms": result.duration_ms, "warnings": list(result.warnings)}
+
+
+def model_hash(model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
+    """Short hash of model identity, evaluator scenario and catalog identity; names the index (and stress) files,
+    so an index built for one catalog variant never has the name another variant looks for."""
+    return hashlib.sha256(_canonical({"model": dict(model_identity), "scenario": _evaluator_scenario_key(scenario),
+                                      "catalog_hash": catalog_hash}).encode()).hexdigest()[:16]
+
+
+def index_name(profile: str, model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
+    """index_<profile>_<model_hash>.json."""
+    return f"index_{profile}_{model_hash(model_identity, scenario, catalog_hash)}.json"
+
+
+_HEX = set("0123456789abcdef")
+_NUMBER = (int, float)
+
+
+def _is_number(v, optional=False) -> bool:
+    if v is None:
+        return optional
+    return isinstance(v, _NUMBER) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _is_int(v, optional=False) -> bool:
+    if v is None:
+        return optional
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def index_row_problem(row) -> str | None:
+    """Why an index row is malformed (missing field or wrong type), or None. Rows are checked before use."""
+    if not isinstance(row, dict):
+        return "row is not an object"
+    required = {"config_hash", "candidate_ids", "within_counts", "capped_time_sum", "bus_hours", "vehicles", "actions",
+                "feasible", "duration_ms", "warnings", *INDEX_IDENTITY_FIELDS}
+    missing = sorted(required - set(row))
+    if missing:
+        return f"missing fields {missing}"
+    h = row["config_hash"]
+    checks = {
+        "config_hash": isinstance(h, str) and len(h) == 64 and set(h) <= _HEX,
+        "candidate_ids": isinstance(row["candidate_ids"], list) and all(isinstance(i, str) for i in row["candidate_ids"]),
+        "within_counts": isinstance(row["within_counts"], dict) and bool(row["within_counts"])
+        and all(isinstance(t, str) and t.isdigit() and _is_int(n) and n >= 0 for t, n in row["within_counts"].items()),
+        "capped_time_sum": _is_number(row["capped_time_sum"]),
+        "bus_hours": _is_number(row["bus_hours"], optional=True),
+        "vehicles": _is_int(row["vehicles"], optional=True),
+        "actions": _is_int(row["actions"]) and row["actions"] >= 0,
+        "feasible": isinstance(row["feasible"], bool),
+        "duration_ms": _is_number(row["duration_ms"]),
+        "warnings": isinstance(row["warnings"], list) and all(isinstance(w, str) for w in row["warnings"]),
+        "primary_t_min": _is_int(row["primary_t_min"]),
+        "cap_min": _is_number(row["cap_min"]),
+        **{f: isinstance(row[f], str) for f in ("contract_version", "model_version", "od_set_id", "state", "profile")},
+    }
+    wrong = sorted(f for f, ok in checks.items() if not ok)
+    return f"wrong type or value: {wrong}" if wrong else None
+
+
+STRESS_VERSION = 1
+
+
+def stress_name(profile: str, model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
+    """stress_<profile>_<model_hash>.json: the stored stress result of the profile's default recommendation."""
+    return f"stress_{profile}_{model_hash(model_identity, scenario, catalog_hash)}.json"
+
+
+def package_id(ids) -> str:
+    return "+".join(sorted(set(ids))) or "NO_ACTION"
+
+
 def cache_identity(config_hash: str, input_hashes: Mapping[str, str]) -> dict:
     """Model identity in the cache key; the router and the precompute must build it the same way."""
     return {"config_hash": config_hash, "input_hashes": dict(sorted(input_hashes.items()))}
@@ -265,6 +397,17 @@ class EvaluationCache:
         self._make_evaluator = make_evaluator
         self._evaluator = None
         self.results: dict[str, tuple[str, EvaluationResult]] = {}  # digest -> (canonical key, result)
+        self.index: dict[str, dict] = {}  # request config_hash -> index row (validated by the router)
+        self._hashes = weakref.WeakKeyDictionary()  # request -> config_hash; computing it re-validates the request
+
+    def config_hash(self, request: RoutingRequest) -> str:
+        try:
+            return self._hashes[request]
+        except KeyError:
+            value = self._hashes[request] = request.config_hash
+            return value
+        except TypeError:  # unhashable request (e.g. per-group headway factors): no memo
+            return request.config_hash
 
     def key_for(self, request: RoutingRequest) -> str:
         return _canonical({"request": request.to_dict(), "model": self.model_identity, "scenario": self.scenario_key})
@@ -272,8 +415,32 @@ class EvaluationCache:
     def path_for(self, key: str) -> Path:
         return self.directory / f"{hashlib.sha256(key.encode()).hexdigest()}.json"
 
-    def lookup(self, request: RoutingRequest) -> EvaluationResult | None:
-        """The valid stored result for this exact request (RAM, then disk), or None; never evaluates."""
+    def lookup(self, request: RoutingRequest) -> EvaluationResult | IndexedResult | None:
+        """The valid stored result for this exact request: index summary, then RAM, then disk; never evaluates."""
+        config_hash = self.config_hash(request)
+        row = self.index.get(config_hash)
+        if row is not None:
+            summary = self._summary(row, request)
+            try:
+                summary.validate_request(request, config_hash)
+                return summary
+            except ValueError as e:
+                del self.index[config_hash]
+                log.warning("index row %s dropped: %s", config_hash, e)
+        return self.lookup_full(request)
+
+    def _summary(self, row: dict, request: RoutingRequest) -> IndexedResult:
+        return IndexedResult(
+            **{name: row[name] for name in INDEX_IDENTITY_FIELDS},
+            within_counts={int(t): n for t, n in row["within_counts"].items()}, capped_time_sum=row["capped_time_sum"],
+            duration_ms=row["duration_ms"], warnings=tuple(row["warnings"]), load_full=lambda: self.full(request))
+
+    def full(self, request: RoutingRequest) -> EvaluationResult:
+        """The full result with OD rows: cached file, else a fresh evaluation."""
+        return self.lookup_full(request) or self._evaluate_fresh(request)
+
+    def lookup_full(self, request: RoutingRequest) -> EvaluationResult | None:
+        """The valid stored full result (RAM, then disk), or None; never evaluates."""
         key = self.key_for(request)
         path = self.path_for(key)
         held = self.results.get(path.stem)
@@ -286,10 +453,13 @@ class EvaluationCache:
             self.results[path.stem] = (key, result)
         return result
 
-    def evaluate(self, request: RoutingRequest) -> EvaluationResult:
+    def evaluate(self, request: RoutingRequest) -> EvaluationResult | IndexedResult:
         result = self.lookup(request)
         if result is not None:
             return result
+        return self._evaluate_fresh(request)
+
+    def _evaluate_fresh(self, request: RoutingRequest) -> EvaluationResult:
         if self._evaluator is None:
             self._evaluator = self._make_evaluator()
         result = self._evaluator(request)
@@ -347,16 +517,80 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             requires_bike=backend.requires_bike,
         )
 
-    def evaluator(profile: str, scenario: Scenario):
-        """Cached evaluator; on first use it evaluates every valid package with <= N_a_max actions once,
-        so later limit changes only re-filter and re-rank."""
+    primed: set[str] = set()
+    index_status: dict[str, dict] = {}
+    indexed: dict[str, set[tuple[str, ...]]] = {p: set() for p in PROFILES}  # packages with a validated index row
+
+    def widest_problem(profile: str, scenario: Scenario) -> DecisionProblem:
+        return problem(scenario, Limits(backend.limits.B_h_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
+                                        backend.limits.max_exact_packages), profile)  # enumeration uses N_a only
+
+    def load_index(profile: str) -> None:
+        """Attach the default-scenario index: header must match; each row must be the request it claims."""
+        scenario = default_scenario()
         cache = cache_for(profile, scenario)
-        widest = problem(scenario, Limits(backend.limits.B_h_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
-                                          backend.limits.max_exact_packages), profile)  # enumeration uses N_a only
-        packages = list(enumerate_packages(widest))
-        if len(packages) <= backend.limits.max_exact_packages:
-            for package in packages:
-                cache.evaluate(build_request(widest, package))
+        path = Path(backend.cache_dir) / index_name(profile, model_identity, scenario, backend.catalog_hash)
+        status = {"file": path.name, "rows": 0, "dropped": 0, "loaded": False}
+        index_status[profile] = status
+        if not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text())
+            header = (data["index_version"], data["profile"], data["model"], data["scenario"], data["catalog_hash"])
+            expected = (INDEX_VERSION, profile, json.loads(_canonical(model_identity)), _evaluator_scenario_key(scenario),
+                        backend.catalog_hash)
+            if json.loads(_canonical(list(header))) != json.loads(_canonical(list(expected))):
+                log.warning("index %s ignored: header (model, scenario, catalog) does not match this backend", path.name)
+                return
+            rows = data["rows"]
+            if not isinstance(rows, list):
+                raise TypeError("rows is not a list")
+        except Exception as e:  # unreadable or malformed file: never crash, never serve it; per-file cache serves
+            log.warning("index %s ignored: %s", path.name, e)
+            return
+        hashes = [r.get("config_hash") for r in rows if isinstance(r, dict) and isinstance(r.get("config_hash"), str)]
+        duplicated = {h for h in hashes if hashes.count(h) > 1}
+        try:
+            widest = widest_problem(profile, scenario)
+        except (ValueError, OSError) as e:  # no committed objective / decided for another model
+            log.warning("index %s not loaded: %s", path.name, e)
+            return
+        for row in rows:
+            try:
+                problem_text = index_row_problem(row)
+                if problem_text:
+                    raise ValueError(problem_text)
+                if row["config_hash"] in duplicated:
+                    raise ValueError("duplicate row for this config_hash")
+                request = build_request(widest, tuple(row["candidate_ids"]))
+                config_hash = cache.config_hash(request)
+                if row["config_hash"] != config_hash:
+                    raise ValueError("config_hash is not the hash of the request it represents")
+                cache._summary(row, request).validate_request(request, config_hash)
+            except Exception as e:  # a malformed row is dropped and logged; its package falls back to its full file
+                status["dropped"] += 1
+                log.warning("index %s row %s dropped: %s", path.name,
+                            row.get("candidate_ids") if isinstance(row, dict) else type(row).__name__, e)
+                continue
+            cache.index[config_hash] = row
+            indexed[profile].add(tuple(request.candidate_ids))
+        status.update(rows=len(cache.index), loaded=True)
+        # the validated index replaces the first-use pass; packages without a row are evaluated on demand
+        primed.add(_canonical({"profile": profile, "scenario": _evaluator_scenario_key(scenario)}))
+
+    def evaluator(profile: str, scenario: Scenario):
+        """Cached evaluator. At the default scenario, on first use it evaluates every valid package with
+        <= N_a_max actions once (index summaries when present), so later limit changes only re-filter and
+        re-rank; stress scenarios evaluate only the packages they need."""
+        cache = cache_for(profile, scenario)
+        name = _canonical({"profile": profile, "scenario": _evaluator_scenario_key(scenario)})
+        if name not in primed and scenario == default_scenario():
+            widest = widest_problem(profile, scenario)
+            packages = list(enumerate_packages(widest))
+            if len(packages) <= backend.limits.max_exact_packages:
+                for package in packages:
+                    cache.evaluate(build_request(widest, package))
+            primed.add(name)
         return cache.evaluate
 
     def objective_dir_for(profile: str) -> Path:
@@ -381,11 +615,20 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
     def limits_from(body: OptimizeBody) -> Limits:
         if body.N_a > backend.N_a_max:
             raise HTTPException(422, f"N_a {body.N_a} exceeds N_a_max {backend.N_a_max}")
+        if body.B_h > backend.B_h_max:
+            raise HTTPException(422, f"B_h {body.B_h} exceeds B_h_max {backend.B_h_max}")
         return Limits(body.B_h, body.K, body.N_a, backend.limits.max_exact_packages)
 
     def run_optimize(limits: Limits, profile: str) -> OptimizationResult:
         scenario = default_scenario()
         return optimize(problem(scenario, limits, profile), evaluator(profile, scenario))
+
+    def reference_bus_hours() -> float | None:
+        """Added bus-hours of the AYNA reference package (the compare_ayna budget), for the B_h slider range."""
+        if not backend.reference_package_ids:
+            return None
+        resources = backend.resources_for(default_scenario())(tuple(sorted(backend.reference_package_ids)))
+        return resources.added_bus_hours
 
     def finding(profile: str) -> str | None:
         """The profile's finding if it was computed for this model and catalog; any other finding is ignored."""
@@ -399,6 +642,9 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
 
     def unprocessable(e: Exception) -> HTTPException:
         return HTTPException(422, str(e))
+
+    for p in PROFILES:  # startup: only the index summaries are read; full OD files stay lazy
+        load_index(p)
 
     @router.get("/state")
     def state() -> dict:
@@ -416,7 +662,10 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return stamp({
             "limits": jsonable(backend.limits),
             "N_a_max": backend.N_a_max,
+            "B_h_max": backend.B_h_max,
             "findings": {p: text for p in PROFILES if (text := finding(p)) is not None},
+            "index": {p: dict(v) for p, v in index_status.items()},
+            "compare_ayna": dict(compare_status),
             "objective": objective,
             "input_hashes": dict(backend.input_hashes),
             "model_hashes": {p: dict(pair) for p, pair in backend.model_hashes.items()},
@@ -425,6 +674,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             "primary_t_min": backend.primary_t_min,
             "H_hours": backend.H_hours,
             "reference_package_ids": list(backend.reference_package_ids) if backend.reference_package_ids else None,
+            "reference_bus_hours": reference_bus_hours(),
             "stress_available": backend.stress_grid is not None,
             "co2_available": co2 is not None,
             "co2_defaults": None if co2 is None else {
@@ -442,22 +692,51 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return stamp(optimization_json(result) | {"limits": jsonable(limits_from(body)),
                                                   "finding": finding(body.profile)}, body, "optimize")
 
-    @router.post("/compare_ayna")
-    def post_compare(body: ProfileBody) -> dict:
-        objective = committed_objective(body.profile)
+    compare_store: dict[str, tuple[str, dict]] = {}  # profile -> (fingerprint, result before stamping)
+    compare_status: dict[str, str] = {}
+
+    def gate_identity(profile: str) -> dict:
+        """The profile's gate exactly as /optimize validates it: missing, invalid or decided for another model
+        raises the same 409. Includes the gate file's SHA-256, so an altered gate never matches a stored result."""
+        objective = committed_objective(profile)
+        path = objective_path_for(objective_dir_for(profile), profile)
+        return {"objective": objective, "file": path.name, "file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "hashes": dict(backend.model_hashes[profile])}
+
+    def compare_fingerprint(profile: str, gate: dict) -> str:
+        """Everything compare_ayna depends on: gate, model, catalog, the index file on disk and the limits."""
+        path = Path(backend.cache_dir) / index_name(profile, model_identity, default_scenario(), backend.catalog_hash)
+        try:
+            st = path.stat()
+            index = [path.name, st.st_size, st.st_mtime_ns]
+        except OSError:
+            index = None
+        limits = {f: getattr(backend.limits, f) for f in ("B_h_bus_hours", "K_new_infra_km", "N_a_actions")}
+        return _canonical({"gate": gate, "model": dict(model_identity), "catalog_hash": backend.catalog_hash,
+                           "index": index, "limits": limits, "N_a_max": backend.N_a_max})
+
+    def compare_packages_indexed(profile: str) -> bool:
+        """Every package compare_ayna needs (all up to N_a_max, and the reference) has a validated index row."""
+        packages = set(enumerate_packages(widest_problem(profile, default_scenario())))
+        packages.add(tuple(sorted(backend.reference_package_ids or ())))
+        return packages <= indexed[profile]
+
+    def compute_compare(profile: str) -> dict:
+        """AYNA reference vs the optimiser at the reference's own bus-hours, N_a_max actions. Inputs are fixed."""
+        objective = committed_objective(profile)
         reference_ids = backend.reference_package_ids
         if not reference_ids:
             raise HTTPException(409, "no AYNA reference package in the catalog")
         scenario = default_scenario()
         try:
-            reference_problem = problem(scenario, backend.limits, body.profile)
+            reference_problem = problem(scenario, backend.limits, profile)
             reference_resources = reference_problem.resources(tuple(sorted(reference_ids)))
             if reference_resources.added_bus_hours is None:
                 raise ValueError(f"reference package {reference_ids}: bus-hours unknown")
             limits = Limits(reference_resources.added_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
                             backend.limits.max_exact_packages)
-            result = optimize(problem(scenario, limits, body.profile), evaluator(body.profile, scenario))
-            ref_eval = evaluator(body.profile, scenario)(build_request(reference_problem, reference_ids))
+            result = optimize(problem(scenario, limits, profile), evaluator(profile, scenario))
+            ref_eval = evaluator(profile, scenario)(build_request(reference_problem, reference_ids))
         except ValueError as e:
             raise unprocessable(e)
         rec = result.recommendation
@@ -465,7 +744,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         rec_key = rank_key(rec.evaluation, rec.resources, objective, rec.candidate_ids)
         if not is_feasible(reference_resources, limits):
             verdict = "reference infeasible under these limits"
-        elif rec_key[:2] < ref_key[:2]:
+        elif compare_rank_keys(rec_key[:2], ref_key[:2], objective) < 0:  # capped sums within the tie are equal
             verdict = "optimizer better"
         elif rec_key[2:5] < ref_key[2:5]:
             verdict = "equal, cheaper"
@@ -474,24 +753,50 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         reference = package_json(PackageOutcome(tuple(sorted(reference_ids)), ref_eval, reference_resources, True))
         best = package_json(rec)
         difference = {k: best[k] - reference[k] for k in ("within_t", "capped_time_sum", "bus_hours", "new_km", "actions")}
-        return stamp({"reference": reference, "optimizer": optimization_json(result), "limits": jsonable(limits),
-                      "difference": difference, "verdict": verdict}, body, "compare_ayna")
+        return {"reference": reference, "optimizer": optimization_json(result), "limits": jsonable(limits),
+                "difference": difference, "verdict": verdict}
 
-    @router.post("/stress")
-    def post_stress(body: PackageBody) -> dict:
-        committed_objective(body.profile)
+    def stored_compare(profile: str) -> dict:
+        """The stored result while gate, model, catalog, index and limits are unchanged (checked on every call,
+        the gate exactly as /optimize does); otherwise reload the index and recompute. With an index loaded,
+        it is computed only from complete index rows, never by routing."""
+        gate = gate_identity(profile)  # 409 like /optimize when the gate is missing, invalid or for another model
+        fingerprint = compare_fingerprint(profile, gate)
+        held = compare_store.get(profile)
+        if held is not None and held[0] == fingerprint:
+            return held[1]
+        if held is not None:
+            caches.clear()  # something changed: drop summaries and the first-use pass, then reload the indexes
+            primed.clear()
+            for p in PROFILES:
+                indexed[p].clear()
+                load_index(p)
+            compare_store.clear()
+        if index_status.get(profile, {}).get("loaded") and not compare_packages_indexed(profile):
+            compare_status[profile] = COMPARE_INCOMPLETE
+            raise HTTPException(409, f"compare_ayna {COMPARE_INCOMPLETE}")
+        result = compute_compare(profile)
+        compare_store[profile] = (fingerprint, result)
+        compare_status[profile] = "ready"
+        return result
+
+    @router.post("/compare_ayna")
+    def post_compare(body: ProfileBody) -> dict:
+        return stamp(dict(stored_compare(body.profile)), body, "compare_ayna")
+
+    def compute_stress(profile: str, package_ids) -> dict:
         if backend.stress_grid is None:
             raise HTTPException(409, "stress grid not available for this model")
-        setup = StressSetup(lambda sc: problem(sc, backend.limits, body.profile), lambda sc: evaluator(body.profile, sc),
+        setup = StressSetup(lambda sc: problem(sc, backend.limits, profile), lambda sc: evaluator(profile, sc),
                             backend.stress_grid, backend.H_hours)
         try:
-            r = stress_test(setup, body.package_ids)
+            r = stress_test(setup, package_ids)
         except ValueError as e:
             raise unprocessable(e)
         if r.status != "ok":
-            return stamp({"status": r.status, "message": r.message, "objective": r.objective,
-                          "package_ids": list(r.package_ids), "points": [], "worst": None, "reoptimization": None,
-                          "reoptimization_reason": "", "warnings": []}, body, "stress")
+            return {"status": r.status, "message": r.message, "objective": r.objective,
+                    "package_ids": list(r.package_ids), "points": [], "worst": None, "reoptimization": None,
+                    "reoptimization_reason": "", "warnings": []}
         points = [{"speed_level": p.speed_level, "headway_level": p.headway_level,
                    "speed_factor": p.scenario.speed_factor,
                    "headway_factors": dict(p.scenario.headway_factor_by_group or {}),
@@ -499,10 +804,71 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
                    "actions": p.actions, "within_t": p.within_t, "capped_time_sum": p.capped_time_sum,
                    "warnings": list(p.warnings)} for p in r.points]
         worst = next(pt for pt, p in zip(points, r.points) if p is r.worst)
-        return stamp({"status": r.status, "message": r.message,
-                      "objective": r.objective, "package_ids": list(r.package_ids), "points": points, "worst": worst,
-                      "reoptimization": optimization_json(r.reoptimization),
-                      "reoptimization_reason": r.reoptimization_reason, "warnings": list(r.warnings)}, body, "stress")
+        return jsonable({"status": r.status, "message": r.message,
+                         "objective": r.objective, "package_ids": list(r.package_ids), "points": points, "worst": worst,
+                         "reoptimization": optimization_json(r.reoptimization),
+                         "reoptimization_reason": r.reoptimization_reason, "warnings": list(r.warnings)})
+
+    stress_store: dict[str, dict] = {}  # canonical stress key -> result before stamping
+    default_recommendation: dict[str, tuple[tuple, tuple[str, ...]]] = {}  # profile -> (fingerprint, package)
+
+    def stress_key(profile: str, package_ids, gate: dict) -> dict:
+        """Everything a stress result depends on: model, catalog, profile, package, grid, default limits and the
+        gate (objective, gate file SHA-256, hash pair) as /optimize validates it."""
+        grid = backend.stress_grid
+        grid_def = None if grid is None else {"speed_levels_kmh": dict(grid.speed_levels_kmh),
+                                              "headway_levels_min": {g: dict(v) for g, v in grid.headway_levels_min.items()},
+                                              "H_hours": backend.H_hours}
+        return json.loads(_canonical({
+            "version": STRESS_VERSION, "model": dict(model_identity), "profile": profile,
+            "package_id": package_id(package_ids),
+            "grid_hash": hashlib.sha256(_canonical(grid_def).encode()).hexdigest()[:16],
+            "limits": {f: getattr(backend.limits, f) for f in ("B_h_bus_hours", "K_new_infra_km", "N_a_actions")},
+            "catalog_hash": backend.catalog_hash, "gate": gate}))
+
+    def stress_path(profile: str) -> Path:
+        return Path(backend.cache_dir) / stress_name(profile, model_identity, default_scenario(), backend.catalog_hash)
+
+    def recommendation_at_defaults(profile: str) -> tuple[str, ...]:
+        """Default recommendation (config/limits.yaml); recomputed when the index changes."""
+        fingerprint = compare_fingerprint(profile, gate_identity(profile))
+        held = default_recommendation.get(profile)
+        if held is None or held[0] != fingerprint:
+            scenario = default_scenario()
+            rec = optimize(problem(scenario, backend.limits, profile), evaluator(profile, scenario)).recommendation
+            held = default_recommendation[profile] = (fingerprint, tuple(rec.candidate_ids))
+        return held[1]
+
+    def load_stress(profile: str) -> None:
+        """Startup: the stored stress result is served only if its key equals the key computed now."""
+        path = stress_path(profile)
+        if not path.exists():
+            return
+        try:
+            stored = json.loads(path.read_text())
+            key = stress_key(profile, stored["key"]["package_id"].split("+") if stored["key"]["package_id"] != "NO_ACTION"
+                             else (), gate_identity(profile))
+            if json.loads(_canonical(stored["key"])) != key:
+                log.warning("stress %s ignored: model, catalog, grid, limits or gate changed", path.name)
+                return
+            stress_store[_canonical(key)] = stored["result"]
+        except (OSError, ValueError, KeyError, TypeError, HTTPException) as e:
+            log.warning("stress %s ignored: %s", path.name, e)
+
+    @router.post("/stress")
+    def post_stress(body: PackageBody) -> dict:
+        gate = gate_identity(body.profile)  # 409 like /optimize when the gate is missing, invalid or for another model
+        key = stress_key(body.profile, body.package_ids, gate)
+        name = _canonical(key)
+        if name not in stress_store:
+            result = compute_stress(body.profile, body.package_ids)
+            stress_store[name] = result
+            if result["status"] == "ok" and tuple(sorted(body.package_ids)) == recommendation_at_defaults(body.profile):
+                path = stress_path(body.profile)
+                tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+                tmp.write_text(_canonical({"key": key, "result": result}))
+                tmp.replace(path)  # the default recommendation's stress: precomputed for the demo
+        return stamp(dict(stress_store[name]), body, "stress")
 
     @router.post("/remove")
     def post_remove(body: RemoveBody) -> dict:
@@ -528,12 +894,13 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             raise HTTPException(422, f"unknown candidate ids {sorted(unknown)}")
         car_trip_km, status, source = body.car_trip_km, "user", "user"
         try:
+            scenario = default_scenario()
+            evaluate = evaluator(body.profile, scenario)
+            p = problem(scenario, backend.limits, body.profile)
+            package_eval, no_action_eval = evaluate(build_request(p, body.package_ids)), evaluate(build_request(p, ()))
+            coverage = car_distance_coverage(package_eval, no_action_eval, backend.od_car_distance_km)
             if car_trip_km is None:
-                scenario = default_scenario()
-                evaluate = evaluator(body.profile, scenario)
-                p = problem(scenario, backend.limits, body.profile)
-                car_trip_km, source = mean_car_distance_km(evaluate(build_request(p, body.package_ids)),
-                                                           evaluate(build_request(p, ())), backend.od_car_distance_km)
+                car_trip_km, source = mean_car_distance_km(package_eval, no_action_eval, backend.od_car_distance_km)
                 status = None if car_trip_km is None else "modelled"
             r = co2_for_package(
                 [co2.candidates[c] for c in body.package_ids], co2.catalog, default_scenario(),
@@ -544,7 +911,20 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         except ValueError as e:
             raise unprocessable(e)
         return stamp(jsonable(r) | {"car_trip_km_source": source, "car_trip_km_status": status,
-                                    "factor_statuses": dict(co2.factor_statuses)},
+                                    "car_distance_coverage": coverage, "factor_statuses": dict(co2.factor_statuses)},
                      body, "co2")
+
+    for p in PROFILES:  # startup: stored stress results (served while their key matches)
+        load_stress(p)
+
+    for p in PROFILES:  # startup: compare_ayna has fixed inputs; once per profile, from a complete index only
+        if not index_status.get(p, {}).get("loaded"):
+            compare_status[p] = "on request (no index)"
+            continue  # without an index it would evaluate every package; it is computed on the first request
+        try:
+            stored_compare(p)  # never routes: an incomplete index marks it unavailable instead
+        except HTTPException as e:  # incomplete cache / objective not committed: reported per request and in /state
+            compare_status.setdefault(p, f"unavailable: {e.detail}")
+            log.warning("compare_ayna for %s not precomputed: %s", p, e.detail)
 
     return router
