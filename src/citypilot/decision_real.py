@@ -197,6 +197,18 @@ def real_input_hashes(model: Any) -> dict[str, str]:
     return hashes
 
 
+def catalog_hash(candidates: Mapping[str, Candidate], exclusions: tuple[tuple[str, ...], ...]) -> str:
+    """Identity of a candidate catalog: every candidate's definition and the exclusion groups (SHA-256)."""
+    import hashlib
+    import json
+
+    body = {"candidates": {cid: {"kind": c.kind, "target_id": c.target_id, "pct": c.pct, "link_ids": list(c.link_ids),
+                                 "parking_ids": list(c.parking_ids), "requires_bike": c.requires_bike}
+                           for cid, c in sorted(candidates.items())},
+            "exclusions": sorted(sorted(g) for g in exclusions)}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def design_only(candidates: Mapping[str, Candidate],
                 exclusions: tuple[tuple[str, ...], ...]) -> tuple[dict[str, Candidate], tuple[tuple[str, ...], ...]]:
     """Drop the 9-min M variants (SVC_M*_B); groups left with one member are no longer exclusions."""
@@ -292,4 +304,5 @@ def real_backend(model: Any, cache_dir: str | Path, car_distances: str | Path, c
                       {"bus_kg_per_vkm": f"P13 {bus_status}", "car_kg_per_pkm": f"P12 {car_status}"}),
         od_car_distance_km=load_od_car_distances(verified_file(car_distances, car_distances_sha256)),
         patches_for=lambda scenario: make_catalog_patches(candidates, catalog, scenario),
+        catalog_hash=catalog_hash(candidates, exclusions),
     )

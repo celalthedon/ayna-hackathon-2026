@@ -5,6 +5,7 @@ All decision maths lives in citypilot.decision_engine; this module validates, ca
 """
 import hashlib
 import json
+import logging
 import math
 import uuid
 from dataclasses import dataclass, fields, is_dataclass
@@ -60,6 +61,17 @@ class Co2Inputs:
     factor_statuses: Mapping[str, str]
 
 
+log = logging.getLogger("citypilot.decision")
+
+
+@dataclass(frozen=True)
+class Finding:
+    """A per-profile finding (e.g. from the precompute), valid only for the model and catalog it was computed for."""
+    text: str
+    model_identity: Mapping  # cache_identity(config_hash, input_hashes) of that model
+    catalog_hash: str | None  # decision_real.catalog_hash of that catalog
+
+
 @dataclass(frozen=True)
 class DecisionBackend:
     """Everything the router needs; built once by the app from the model and config."""
@@ -89,7 +101,8 @@ class DecisionBackend:
     od_car_distance_km: Mapping[str, OdCarDistance] | None = None  # OD table car_distance_km
     patches_for: Callable[[Scenario], Callable[[tuple[str, ...]], tuple[RoutingPatch, ...]]] = lambda scenario: no_patches
     requires_bike: frozenset[str] = frozenset()
-    findings: Mapping[str, str] | None = None  # per profile, e.g. from the precompute manifest; shown, not an error
+    findings: Mapping[str, Finding] | None = None  # per profile; shown (not an error) only for this model and catalog
+    catalog_hash: str | None = None  # identity of the candidate catalog (decision_real.catalog_hash)
 
     def __post_init__(self):
         if set(self.model_hashes) != set(PROFILES):
@@ -375,7 +388,14 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return optimize(problem(scenario, limits, profile), evaluator(profile, scenario))
 
     def finding(profile: str) -> str | None:
-        return (backend.findings or {}).get(profile)
+        """The profile's finding if it was computed for this model and catalog; any other finding is ignored."""
+        f = (backend.findings or {}).get(profile)
+        if f is None:
+            return None
+        if _canonical(dict(f.model_identity)) != _canonical(model_identity) or f.catalog_hash != backend.catalog_hash:
+            log.warning("finding for %s ignored: computed for another model or catalog", profile)
+            return None
+        return f.text
 
     def unprocessable(e: Exception) -> HTTPException:
         return HTTPException(422, str(e))
@@ -396,7 +416,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return stamp({
             "limits": jsonable(backend.limits),
             "N_a_max": backend.N_a_max,
-            "findings": dict(backend.findings or {}),
+            "findings": {p: text for p in PROFILES if (text := finding(p)) is not None},
             "objective": objective,
             "input_hashes": dict(backend.input_hashes),
             "model_hashes": {p: dict(pair) for p, pair in backend.model_hashes.items()},

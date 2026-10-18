@@ -33,7 +33,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from citypilot.api_decision import EvaluationCache, cache_identity
+from citypilot.api_decision import EvaluationCache, _canonical, cache_identity
 from citypilot.decision_engine import DecisionProblem, Limits, Scenario, build_request, enumerate_packages
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -55,6 +55,7 @@ class Context:
     scenario: Scenario
     make_evaluator: Callable[[], Callable]
     info: Mapping[str, Any]  # model identity for the manifest
+    catalog_hash: str | None = None  # decision_real.catalog_hash of the (variant-filtered) candidate catalog
 
     @property
     def profile(self) -> str:
@@ -64,8 +65,9 @@ class Context:
 def build_context(bundle: Path, config: Path, profile: str, m_variants: str) -> Context:
     """Real catalog on the loaded model (R2/R14 cuts + M services), limits from config/limits.yaml."""
     from citypilot.decision_engine import load_scenario
-    from citypilot.decision_real import (LIMITS_PATH, design_only, load_n_a_max, real_catalog, real_evaluator,
-                                         real_input_hashes, real_limits, real_problem, strongest_package)
+    from citypilot.decision_real import (LIMITS_PATH, catalog_hash, design_only, load_n_a_max, real_catalog,
+                                         real_evaluator, real_input_hashes, real_limits, real_problem,
+                                         strongest_package)
     from citypilot.routing_engine import get_catalog, load_model
 
     if m_variants not in M_VARIANT_CHOICES:
@@ -87,6 +89,7 @@ def build_context(bundle: Path, config: Path, profile: str, m_variants: str) -> 
         scenario=Scenario(1.0, 1.0, H_hours),
         make_evaluator=lambda: real_evaluator(model),
         info={"model_version": catalog.model_version, **hashes},
+        catalog_hash=catalog_hash(candidates, exclusions),
     )
 
 
@@ -243,6 +246,8 @@ def run(ctx: Context, cache_dir: Path, workers: int = 1, limit: int | None = Non
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "git_commit": git_commit(),
         **dict(ctx.info),
+        "identity": json.loads(json.dumps(dict(ctx.identity))),
+        "catalog_hash": ctx.catalog_hash,
         "libraries": library_versions(),
         "profile": ctx.profile,
         "m_variants": ctx.m_variants,
@@ -271,12 +276,21 @@ def run(ctx: Context, cache_dir: Path, workers: int = 1, limit: int | None = Non
     return entry
 
 
-def findings_from_manifest(path: Path) -> dict[str, str]:
-    """Per profile findings for DecisionBackend.findings (shown in the API/UI, not errors)."""
+def findings_from_manifest(path: Path, model_identity: Mapping, catalog_hash: str | None) -> dict:
+    """Per-profile Findings for DecisionBackend.findings, only from runs computed for this model and catalog."""
+    from citypilot.api_decision import Finding
+
     if not Path(path).exists():
         return {}
-    runs = json.loads(Path(path).read_text())["runs"].values()
-    return {r["profile"]: r["finding"] for r in runs if r.get("finding")}
+    wanted = _canonical(dict(model_identity))
+    out = {}
+    for r in json.loads(Path(path).read_text())["runs"].values():
+        if not r.get("finding"):
+            continue
+        if _canonical(r.get("identity") or {}) != wanted or r.get("catalog_hash") != catalog_hash:
+            continue  # stale: another model or catalog variant
+        out[r["profile"]] = Finding(r["finding"], r["identity"], r["catalog_hash"])
+    return out
 
 
 def main(argv=None) -> int:

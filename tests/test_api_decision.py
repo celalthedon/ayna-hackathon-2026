@@ -336,10 +336,28 @@ def test_default_n_a_cannot_exceed_n_a_max(tmp_path, counter):
         dataclasses.replace(four_action_backend(tmp_path, counter), N_a_max=2)
 
 
+FIXTURE_IDENTITY = {"config_hash": "fixture_4action", "input_hashes": {"fixture": "fixture_4action"}}
+
+
 def test_finding_is_shown_not_an_error(tmp_path, counter):
+    from citypilot.api_decision import Finding
     finding = "B: no catalog action changes bike travel times"
-    c = client_for(dataclasses.replace(four_action_backend(tmp_path, counter), findings={"B": finding}))
+    c = client_for(dataclasses.replace(four_action_backend(tmp_path, counter),
+                                       findings={"B": Finding(finding, FIXTURE_IDENTITY, None)}))
     assert strict_json(c.get("/decision/state"))["findings"] == {"B": finding}
     r = optimize(c, 24, profile="B")
     assert r.status_code == 200 and r.json()["finding"] == finding
     assert optimize(c, 24, profile="P").json()["finding"] is None
+
+
+@pytest.mark.parametrize("stale", [
+    {"model_identity": {"config_hash": "other-model", "input_hashes": {"fixture": "fixture_4action"}}},
+    {"catalog_hash": "design_only-catalog"},
+])
+def test_a_finding_for_another_model_or_catalog_is_never_shown(tmp_path, counter, stale):
+    from citypilot.api_decision import Finding
+    f = Finding(**({"text": "B: no catalog action changes bike travel times", "model_identity": FIXTURE_IDENTITY,
+                    "catalog_hash": None} | stale))
+    c = client_for(dataclasses.replace(four_action_backend(tmp_path, counter), findings={"B": f}))
+    assert strict_json(c.get("/decision/state"))["findings"] == {}
+    assert optimize(c, 24, profile="B").json()["finding"] is None

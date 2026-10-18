@@ -16,7 +16,7 @@ from citypilot.decision_real import LIMITS_PATH, design_only, load_n_a_max, stro
 
 from test_optimize import FIXTURE, problem_from  # noqa: E402
 
-MANIFEST_FIELDS = {"timestamp", "git_commit", "model_version", "bundle_hash", "od_hash", "libraries", "profile",
+MANIFEST_FIELDS = {"identity", "catalog_hash", "timestamp", "git_commit", "model_version", "bundle_hash", "od_hash", "libraries", "profile",
                    "m_variants", "N_a_max", "counts_by_N_a", "limit", "counts", "failed_ids", "workers",
                    "peak_rss_kb_per_worker", "wall_s", "duration_ms", "max_package_check", "finding", "log"}
 
@@ -132,7 +132,11 @@ def test_b_skips_when_the_strongest_package_changes_nothing(tmp_path):
     entry = pc.run(context(tmp_path, evaluate, profile="B"), cache)
     assert entry["max_package_check"]["equals_disrupted"] is True and entry["finding"] == pc.B_NO_EFFECT
     assert entry["counts"]["expected"] == 0 and evaluate.calls == 2  # disrupted + strongest only
-    assert pc.findings_from_manifest(cache / pc.MANIFEST_NAME) == {"B": pc.B_NO_EFFECT}
+    ctx = context(tmp_path, evaluate, profile="B")
+    (f,) = pc.findings_from_manifest(cache / pc.MANIFEST_NAME, ctx.identity, ctx.catalog_hash).values()
+    assert f.text == pc.B_NO_EFFECT and dict(f.model_identity) == ctx.identity
+    assert pc.findings_from_manifest(cache / pc.MANIFEST_NAME, {"config_hash": "other", "input_hashes": {}}, None) == {}
+    assert pc.findings_from_manifest(cache / pc.MANIFEST_NAME, ctx.identity, "design_only-catalog") == {}
 
 
 def test_b_falls_back_to_a_full_run_when_the_strongest_package_differs(tmp_path):
