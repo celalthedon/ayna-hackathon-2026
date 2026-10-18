@@ -23,104 +23,165 @@ RESULTS = ROOT / "outputs" / "m_results_dc34c5b.json"
 TOL = 1e-6
 
 
-class Smoke:
-    def __init__(self, client):
-        self.client, self.rows, self.failures = client, [], 0
+# Coverage the CO2 panel must show (k of n restored journeys without a modelled car distance). Not in
+# m_results_dc34c5b.json (it predates car_distance_coverage); fixed from Celal's original od_car_distances.csv.
+EXPECTED_COVERAGE = {"P recommendation": (36, 750), "AYNA reference": (41, 882), "B recommendation": (0, 0)}
+ALTERNATIVES_SHOWN = 3  # the optimiser reports the top 3; the expected file lists ties beyond them
 
-    def call(self, name, method, path, body=None):
+
+class Checks:
+    def __init__(self):
+        self.rows = []  # (call, label, ok, detail)
+
+    def check(self, call, label, ok, detail=""):
+        self.rows.append((call, label, bool(ok), detail))
+
+    def same(self, call, label, got, want):
+        ok = (abs(got - want) <= TOL) if isinstance(want, float) and isinstance(got, (int, float)) else got == want
+        self.check(call, label, ok, "" if ok else f"got {got!r}, want {want!r}")
+
+    @property
+    def failures(self):
+        return sum(not ok for _, _, ok, _ in self.rows)
+
+
+def package_values(p):
+    return {"candidate_ids": p["candidate_ids"], "within_t": p["within_t"], "capped_time_sum": p["capped_time_sum"],
+            "bus_hours": p["bus_hours"]}
+
+
+def same_package(c, call, label, got, want):
+    for k in ("candidate_ids", "within_t", "capped_time_sum", "bus_hours"):
+        c.same(call, f"{label} {k}", got.get(k), want.get(k))
+
+
+def collect(client):
+    """Every demo call over HTTP: name -> (seconds, answer)."""
+    out = {}
+
+    def call(name, method, path, body=None):
         started = time.perf_counter()
-        r = self.client.request(method, path, json=body)
+        r = client.request(method, path, json=body)
         seconds = time.perf_counter() - started
         if r.status_code != 200:
             raise RuntimeError(f"{name}: {method} {path} {body} -> {r.status_code} {r.text[:300]}")
-        self.rows.append({"call": name, "s": seconds, "checks": []})
+        out[name] = (seconds, r.json())
         return r.json()
 
-    def check(self, label, ok, detail=""):
-        self.rows[-1]["checks"].append((label, bool(ok), detail))
-        self.failures += not ok
-
-    def same(self, label, got, want):
-        ok = (abs(got - want) <= TOL) if isinstance(want, float) and isinstance(got, (int, float)) else got == want
-        self.check(label, ok, "" if ok else f"got {got!r}, want {want!r}")
-
-
-def run(smoke, ref):
-    s = smoke.call("state", "GET", "/decision/state")
+    call("state", "GET", "/decision/state")
     for p in ("P", "B"):
-        smoke.same(f"index {p} loaded, 0 dropped", (s["index"][p]["loaded"], s["index"][p]["dropped"]), (True, 0))
-    smoke.same("objective P / B", (s["objective"]["P"]["value"], s["objective"]["B"]["value"]), ("count", "sum"))
-    smoke.same("N_a_max", s["N_a_max"], 5)
+        rec = call(f"optimize {p} defaults", "POST", "/decision/optimize", {"B_h": 30, "K": 2.0, "N_a": 3, "profile": p})
+        call(f"optimize {p} N_a 5, B_h 105", "POST", "/decision/optimize", {"B_h": 105, "K": 2.0, "N_a": 5, "profile": p})
+        call(f"compare_ayna {p}", "POST", "/decision/compare_ayna", {"profile": p})
+        package = rec["recommendation"]["candidate_ids"]
+        call(f"stress {p}", "POST", "/decision/stress", {"package_ids": package, "profile": p})
+        call(f"remove {p}", "POST", "/decision/remove", {"package_ids": package, "action_id": package[0], "profile": p})
+    return out
 
+
+def collect_co2(client, ref, out):
+    def call(name, body):
+        started = time.perf_counter()
+        r = client.post("/decision/co2", json=body)
+        if r.status_code != 200:
+            raise RuntimeError(f"{name}: /co2 {body} -> {r.status_code} {r.text[:300]}")
+        out[name] = (time.perf_counter() - started, r.json())
+
+    for name, ids, profile in co2_packages(ref):
+        call(f"co2 {name}", {"package_ids": ids, "profile": profile})
+        call(f"co2 {name}, 10 km entered", {"package_ids": ids, "profile": profile, "car_trip_km": 10.0})
+
+
+def co2_packages(ref):
+    return (("P recommendation", ref["default"]["P"]["recommendation"]["candidate_ids"], "P"),
+            ("AYNA reference", ref["compare_ayna"]["P"]["reference"]["candidate_ids"], "P"),
+            ("B recommendation", ref["default"]["B"]["recommendation"]["candidate_ids"], "B"))
+
+
+def verify(answers, ref, coverage=EXPECTED_COVERAGE) -> Checks:
+    """Exact checks of the collected answers against the expected results (pure; no HTTP)."""
+    c = Checks()
+    a = lambda name: answers[name][1]  # noqa: E731
+    s = a("state")
     for p in ("P", "B"):
-        d, c = ref["default"][p], ref["compare_ayna"][p]
-        r = smoke.call(f"optimize {p} defaults", "POST", "/decision/optimize",
-                       {"B_h": 30, "K": 2.0, "N_a": 3, "profile": p})
-        rec = r["recommendation"]
-        smoke.same("recommendation", rec["candidate_ids"], d["recommendation"]["candidate_ids"])
-        smoke.same("within_t", rec["within_t"], d["recommendation"]["within_t"])
-        smoke.same("capped_time_sum", rec["capped_time_sum"], d["recommendation"]["capped_time_sum"])
-        smoke.same("bus_hours", rec["bus_hours"], d["recommendation"]["bus_hours"])
-        n = min(len(r["alternatives"]), 3)
-        smoke.same(f"top-{n} alternatives", [a["candidate_ids"] for a in r["alternatives"][:n]],
-                   [a["candidate_ids"] for a in d["alternatives"][:n]])
-        for name, b in d["baselines"].items():
-            smoke.same(f"baseline {name}", r["baselines"][name]["package"]["candidate_ids"], b["package"]["candidate_ids"])
-
-        r = smoke.call(f"optimize {p} N_a 5, B_h 105", "POST", "/decision/optimize",
-                       {"B_h": 105, "K": 2.0, "N_a": 5, "profile": p})
-        smoke.same("recommendation = compare_ayna CityPilot package", r["recommendation"]["candidate_ids"],
-                   c["citypilot"]["candidate_ids"])
-
-        r = smoke.call(f"compare_ayna {p}", "POST", "/decision/compare_ayna", {"profile": p})
-        smoke.same("verdict", r["verdict"], c["verdict"])
-        smoke.same("reference", r["reference"], c["reference"])
-        smoke.same("CityPilot package", r["optimizer"]["recommendation"]["candidate_ids"], c["citypilot"]["candidate_ids"])
-        smoke.same("limits", r["limits"], c["limits"])
-
-        package = d["recommendation"]["candidate_ids"]
-        r = smoke.call(f"stress {p} {'+'.join(package)}", "POST", "/decision/stress", {"package_ids": package, "profile": p})
-        smoke.same("status / points", (r["status"], len(r["points"])), ("ok", 9))
+        c.same("state", f"index {p} loaded, 0 dropped", (s["index"][p]["loaded"], s["index"][p]["dropped"]), (True, 0))
+    c.same("state", "objective P / B", (s["objective"]["P"]["value"], s["objective"]["B"]["value"]), ("count", "sum"))
+    c.same("state", "N_a_max / B_h_max", (s["N_a_max"], s["B_h_max"]), (5, 120.0))
+    for p in ("P", "B"):
+        d, cmp = ref["default"][p], ref["compare_ayna"][p]
+        name = f"optimize {p} defaults"
+        r = a(name)
+        same_package(c, name, "recommendation", r["recommendation"], d["recommendation"])
+        want = [package_values(x) for x in d["alternatives"]][:ALTERNATIVES_SHOWN]
+        got = [package_values(x) for x in r["alternatives"]]
+        c.check(name, "alternatives present", bool(got) or not want,
+                "" if (got or not want) else f"empty, expected {len(want)}")
+        c.same(name, "alternatives count", len(got), len(want))
+        for i, (g, w) in enumerate(zip(got, want)):
+            same_package(c, name, f"alternative {i + 1}", g, w)
+        for b, bw in d["baselines"].items():
+            same_package(c, name, f"baseline {b}", package_values(r["baselines"][b]["package"]), bw["package"])
+        name = f"optimize {p} N_a 5, B_h 105"
+        c.same(name, "recommendation = compare_ayna CityPilot package", a(name)["recommendation"]["candidate_ids"],
+               cmp["citypilot"]["candidate_ids"])
+        name = f"compare_ayna {p}"
+        r = a(name)
+        c.same(name, "verdict", r["verdict"], cmp["verdict"])
+        same_package(c, name, "reference", r["reference"], cmp["reference"])
+        same_package(c, name, "CityPilot package", r["optimizer"]["recommendation"], cmp["citypilot"])
+        c.same(name, "limits", r["limits"], cmp["limits"])
+        name = f"stress {p}"
+        r = a(name)
+        c.same(name, "status / points", (r["status"], len(r["points"])), ("ok", 9))
         if p == "P":
             want = ref["stress_P"]
-            got = [(q["speed_level"], q["headway_level"], q["within_t"], q["bus_hours"]) for q in r["points"]]
-            smoke.same("grid points (within_t, bus_hours)", got,
-                       [(q["speed_level"], q["headway_level"], q["within_t"], q["bus_hours"]) for q in want["points"]])
-            smoke.same("grid capped sums", [round(q["capped_time_sum"], 6) for q in r["points"]],
-                       [round(q["capped_time_sum"], 6) for q in want["points"]])
-            smoke.same("worst point", (r["worst"]["speed_level"], r["worst"]["headway_level"]),
-                       (want["worst"]["speed_level"], want["worst"]["headway_level"]))
-            smoke.same("re-optimisation", r["reoptimization"]["recommendation"]["candidate_ids"],
-                       want["reoptimization"]["recommendation"])
-        else:
-            smoke.check("no m_results reference for B stress", True,
-                        f"worst {r['worst']['speed_level']}/{r['worst']['headway_level']}, re-opt "
-                        f"{r['reoptimization']['recommendation']['candidate_ids']}")
-
-        r = smoke.call(f"remove {p} {package[0]}", "POST", "/decision/remove",
-                       {"package_ids": package, "action_id": package[0], "profile": p})
-        smoke.same("remaining", r["remaining"]["candidate_ids"], [i for i in package if i != package[0]])
+            c.same(name, "grid points (level, within_t, bus_hours)",
+                   [(q["speed_level"], q["headway_level"], q["within_t"], q["bus_hours"]) for q in r["points"]],
+                   [(q["speed_level"], q["headway_level"], q["within_t"], q["bus_hours"]) for q in want["points"]])
+            for q, w in zip(r["points"], want["points"]):
+                c.same(name, f"capped sum {q['speed_level']}/{q['headway_level']}", q["capped_time_sum"], w["capped_time_sum"])
+            c.same(name, "worst point", (r["worst"]["speed_level"], r["worst"]["headway_level"]),
+                   (want["worst"]["speed_level"], want["worst"]["headway_level"]))
+            c.same(name, "re-optimisation", r["reoptimization"]["recommendation"]["candidate_ids"],
+                   want["reoptimization"]["recommendation"])
+        name = f"remove {p}"
+        r, package = a(name), d["recommendation"]["candidate_ids"]
+        c.same(name, "remaining", r["remaining"]["candidate_ids"], [i for i in package if i != package[0]])
         if p == "P":
-            smoke.same("loss within 45", r["loss_within_t"],
-                       d["recommendation"]["within_t"] - d["disrupted"]["within_t"])
+            c.same(name, "loss within 45", r["loss_within_t"], d["recommendation"]["within_t"] - d["disrupted"]["within_t"])
         else:
-            smoke.same("capped time increase", r["capped_time_increase"], d["recommendation"]["capped_time_sum_reduction"])
-
-    for name, ids, profile in (("P recommendation", ref["default"]["P"]["recommendation"]["candidate_ids"], "P"),
-                               ("AYNA reference", ref["compare_ayna"]["P"]["reference"]["candidate_ids"], "P"),
-                               ("B recommendation", ref["default"]["B"]["recommendation"]["candidate_ids"], "B")):
-        r = smoke.call(f"co2 {name}", "POST", "/decision/co2", {"package_ids": ids, "profile": profile})
-        want = ref["co2"].get({"P recommendation": "P_recommendation", "AYNA reference": "AYNA_reference"}.get(name, ""))
+            c.same(name, "capped time increase", r["capped_time_increase"], d["recommendation"]["capped_time_sum_reduction"])
+    for label, _, _ in co2_packages(ref):
+        name = f"co2 {label}"
+        r = a(name)
+        want = ref["co2"].get({"P recommendation": "P_recommendation", "AYNA reference": "AYNA_reference"}.get(label, ""))
         if want:
-            smoke.same("bus_kg", r["bus_kg"], want["bus_kg"])
-            smoke.same("status", r["status"], want["status"])
+            c.same(name, "bus_kg", r["bus_kg"], want["bus_kg"])
+            c.same(name, "status", r["status"], want["status"])
         cov = r["car_distance_coverage"]
-        smoke.check("coverage", True, f"{cov['missing']} of {cov['restored']} restored lack a car distance "
-                                      f"{cov['by_reason']}; status {r['status']}")
-        r = smoke.call(f"co2 {name}, 10 km entered", "POST", "/decision/co2",
-                       {"package_ids": ids, "profile": profile, "car_trip_km": 10.0})
-        expected = math.ceil(r["bus_kg"] / (10.0 * r["car_kg_per_pkm"])) if r["bus_kg"] > 0 else 0
-        smoke.same("break-even from the entered value", (r["status"], r["break_even_trips"]), ("complete", expected))
+        c.same(name, "coverage k of n", (cov["missing"], cov["restored"]), tuple(coverage[label]))
+        r10 = a(f"co2 {label}, 10 km entered")
+        expected = math.ceil(r10["bus_kg"] / (10.0 * r10["car_kg_per_pkm"])) if r10["bus_kg"] > 0 else 0
+        c.same(f"co2 {label}, 10 km entered", "break-even from the entered value",
+               (r10["status"], r10["break_even_trips"]), ("complete", expected))
+    return c
+
+
+def self_test(answers, ref) -> list[str]:
+    """Tampered expectations must make the checks fail; returns the tampers that did NOT fail (should be [])."""
+    import copy
+    missed = []
+    empty = copy.deepcopy(ref)
+    empty["default"]["P"]["alternatives"] = []  # expected empty, the API reports alternatives
+    if verify(answers, empty).failures == 0:
+        missed.append("expected alternatives emptied")
+    if verify({**answers, "optimize P defaults": (0, {**answers["optimize P defaults"][1], "alternatives": []})},
+              ref).failures == 0:
+        missed.append("API alternatives emptied")
+    impossible = {**EXPECTED_COVERAGE, "P recommendation": (999, 1)}
+    if verify(answers, ref, impossible).failures == 0:
+        missed.append("impossible coverage")
+    return missed
 
 
 def main() -> int:
@@ -164,20 +225,24 @@ def main() -> int:
     timings["server_ready_s"] = time.perf_counter() - started
     ref = json.loads(args.results.read_text())
     with httpx.Client(base_url=base, timeout=900) as client:
-        smoke = Smoke(client)
         try:
-            run(smoke, ref)
+            answers = collect(client)
+            collect_co2(client, ref, answers)
         finally:
             server.should_exit = True
             thread.join(timeout=30)
+    checks = verify(answers, ref)
+    missed = self_test(answers, ref)
     print(f"startup: model {timings['model_load_s']:.1f} s, app (index + compare_ayna) {timings['app_build_s']:.1f} s, "
           f"server ready {timings['server_ready_s']:.1f} s")
-    for row in smoke.rows:
-        print(f"{row['s']:8.3f} s  {row['call']}")
-        for label, ok, detail in row["checks"]:
-            print(f"           {'ok  ' if ok else 'FAIL'} {label}{(': ' + detail) if detail else ''}")
-    print(f"{len(smoke.rows)} calls, {sum(len(r['checks']) for r in smoke.rows)} checks, {smoke.failures} failed")
-    return 1 if smoke.failures else 0
+    for name, (seconds, _) in answers.items():
+        print(f"{seconds:8.3f} s  {name}")
+        for call, label, ok, detail in checks.rows:
+            if call == name:
+                print(f"           {'ok  ' if ok else 'FAIL'} {label}{(': ' + detail) if detail else ''}")
+    print(f"{len(answers)} calls, {len(checks.rows)} checks, {checks.failures} failed")
+    print("self-test (tampered expectations must fail): " + ("ok" if not missed else f"FAILED, not detected: {missed}"))
+    return 1 if checks.failures or missed else 0
 
 
 if __name__ == "__main__":
