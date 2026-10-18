@@ -1,4 +1,5 @@
 import {RoutingController,fetchJSON,assertIdentity} from './routing-adapter.js';
+import {groupODOptions,odJourneyHeading} from './od-labels.js';
 const $=id=>document.getElementById(id);
 const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!=null)n.textContent=text;if(cls)n.className=cls;return n;};
 
@@ -35,13 +36,15 @@ export class RoutingUI {
   populate() {
     for(const [id,items]of [['origin',this.metadata.origins],['destination',this.metadata.destinations]]) {
       const select=$(id),old=select.value;select.replaceChildren();
-      for(const item of items) {
-        const p=item.properties,label=id==='origin'?(p.origin_kind==='terminal'?'Bakı Beynəlxalq Avtovağzal':p.origin_kind==='metro_exit'?item.id:'Grid · '+item.id.split(':').slice(-2).join(':')):[p.station_name,p.exit_name].filter(Boolean).join(' · ');
-        select.append(new Option(label+' · '+item.id,item.id));
+      for(const group of groupODOptions(items,this.data.exits)) {
+        const section=node('optgroup');section.label=group.label;
+        for(const item of group.options){const option=new Option(item.label,item.value);option.dataset.heading=item.heading;section.append(option);}
+        select.append(section);
       }
       select.disabled=false;
       select.value=items.some(i=>i.id===old)?old:id==='origin'&&items.some(i=>i.id==='origin:terminal:baku_international')?'origin:terminal:baku_international':items[0]?.id||'';
     }
+    this.updateJourneyHeading();
     this.state.headways={};this.state.services={};
     for(const [id,group]of [['headway-r2','SG_R2'],['headway-r14','SG_R14']]) {
       const select=$(id),configured=this.metadata.headways[group];select.replaceChildren(new Option('Baza intervalı / dəyişməz',''));
@@ -64,10 +67,15 @@ export class RoutingUI {
     }
   }
   change() {
+    this.updateJourneyHeading();
     if(this.controller&&JSON.stringify(this.selection())===this.controller.selectionKey)return;
     this.onInvalidate();
     if(this.controller)this.controller.select(this.selection());
     this.listeners.forEach(f=>f());
+  }
+  updateJourneyHeading() {
+    document.querySelector('.journey-selection h2').textContent=odJourneyHeading(
+      $('origin').selectedOptions[0]?.dataset.heading,$('destination').selectedOptions[0]?.dataset.heading);
   }
   status(phase,message) {
     this.phase=phase;this.message=message;
