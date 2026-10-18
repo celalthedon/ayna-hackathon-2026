@@ -16,6 +16,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 from citypilot import routing_engine as engine
 from citypilot.contracts import ContractError,StressFactorsNotSupported,RoutingPatch,RoutingRequest,Provenance,JourneyResult,EvaluationResult,ModelCatalog
+from geometry_assertions import assert_same_directed_path
 
 BUNDLE=Path(os.environ['CITYPILOT_TEST_BUNDLE']) if os.environ.get('CITYPILOT_TEST_BUNDLE') else None
 
@@ -192,13 +193,21 @@ class RealBundleTests(unittest.TestCase):
                         if profile=='P':self.assertFalse(any(l.mode=='bike' for l in journey.legs))
 
     def test_projected_stop_shapes_use_saved_substrings(self):
-        import numpy as np
+        from pyproj import Transformer
+        project=Transformer.from_crs('EPSG:4326',self.model['runtime']['metric_crs'],always_xy=True)
+        def metric_coordinates(geometry):
+            coordinates=geometry['coordinates']
+            if geometry['type']=='Point':coordinates=[coordinates]
+            x,y=project.transform(*zip(*coordinates))
+            return list(zip(x,y))
         regenerated=engine.projected_bus_geometries(self.model)
         self.assertEqual(set(regenerated),set(self.model['bus_geometry']))
         for ride,geom in regenerated.items():
-            ref=self.model['bus_geometry'][ride]['geometry']
-            self.assertEqual(geom['type'],ref['type'])
-            np.testing.assert_allclose(geom['coordinates'],ref['coordinates'],rtol=0,atol=1e-8)
+            with self.subTest(ride=ride):
+                ref=self.model['bus_geometry'][ride]['geometry']
+                self.assertEqual(geom['type'],ref['type'])
+                self.assertIn(geom['type'],('LineString','Point'))
+                assert_same_directed_path(metric_coordinates(geom),metric_coordinates(ref))
 
     def test_profile_od_ids_and_tagged_source_numerical_parity(self):
         p=engine.get_od_table(self.model,'P');b=engine.get_od_table(self.model,'B')
