@@ -189,6 +189,19 @@ def load_n_a_max(path: str | Path = LIMITS_PATH) -> int:
     return value
 
 
+def load_b_h_max(path: str | Path = LIMITS_PATH) -> float:
+    """B_h_max from config/limits.yaml: the largest bus-hour budget the API accepts and the UI slider offers."""
+    import math
+
+    import yaml
+
+    with open(path) as f:
+        value = (yaml.safe_load(f) or {}).get("B_h_max")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{path}: B_h_max must be a finite number > 0, got {value!r}")
+    return float(value)
+
+
 def real_input_hashes(model: Any) -> dict[str, str]:
     """Bundle, OD and supplement identity of the loaded model (cache key and manifest)."""
     hashes = {"bundle_hash": model["manifest"]["bundle_hash"], "od_hash": model["od"]["od_hash"]}
@@ -253,6 +266,19 @@ def assumption_default(param_id: str, path: str | Path = ASSUMPTIONS_PATH) -> tu
     return float(rows[0]["value_default"]), rows[0]["status"]
 
 
+STRESS_PARAMS = ("P3", {"SG_R2": "P1", "SG_R14": "P2"})  # bus speed; existing-route headways
+
+
+def real_stress_grid(path: str | Path = ASSUMPTIONS_PATH):
+    """Stress grid from assumptions.csv: P3 speed levels, P1/P2 headway levels for SG_R2/SG_R14."""
+    import csv
+
+    from citypilot.decision_engine import stress_grid_from_assumptions
+
+    with open(path, newline="", encoding="utf-8") as f:
+        return stress_grid_from_assumptions(list(csv.DictReader(f)), *STRESS_PARAMS)
+
+
 def verified_file(path: str | Path, sha256: str) -> Path:
     """The file, after checking its SHA-256; a mismatch fails loudly."""
     import hashlib
@@ -299,7 +325,9 @@ def real_backend(model: Any, cache_dir: str | Path, car_distances: str | Path, c
         evaluator_for=lambda profile, scenario: real_evaluator(model),
         cache_dir=Path(cache_dir),
         N_a_max=load_n_a_max(),
+        B_h_max=load_b_h_max(),
         reference_package_ids=AYNA_REFERENCE,
+        stress_grid=real_stress_grid(),
         co2=Co2Inputs(candidates, catalog, bus_factor, car_factor,
                       {"bus_kg_per_vkm": f"P13 {bus_status}", "car_kg_per_pkm": f"P12 {car_status}"}),
         od_car_distance_km=load_od_car_distances(verified_file(car_distances, car_distances_sha256)),

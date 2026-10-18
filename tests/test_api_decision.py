@@ -71,6 +71,7 @@ def four_action_backend(tmp_path, counter, reference=("B", "C", "D"), objective=
         evaluator_for=counter.evaluator_for,
         cache_dir=tmp_path / "cache",
         N_a_max=4,
+        B_h_max=120.0,
         reference_package_ids=reference,
     )
 
@@ -182,7 +183,6 @@ def test_compare_without_reference(tmp_path, counter):
 # --- validation and errors ---
 
 @pytest.mark.parametrize("body", [
-    {"B_h": 71, "K": 2, "N_a": 3, "profile": "P"},
     {"B_h": -1, "K": 2, "N_a": 3, "profile": "P"},
     {"B_h": 24, "K": 3.5, "N_a": 3, "profile": "P"},
     {"B_h": 24, "K": 2, "N_a": 0, "profile": "P"},
@@ -374,3 +374,41 @@ def test_co2_coverage_then_break_even_from_the_entered_trip_length(tmp_path):
     assert r["status"] == "complete" and r["car_trip_km_status"] == "user" and r["car_trip_km"] == 6.0
     assert r["break_even_trips"] == 510  # same as the modelled 6 km default
     assert r["car_distance_coverage"]["missing"] == 6
+
+
+def test_stress_evaluates_only_what_it_needs(tmp_path):
+    from collections import Counter
+    from citypilot.decision_engine import enumerate_packages
+    backend = fixture_stress_backend(write_objective(tmp_path / "objectives"), tmp_path / "cache")
+    calls = Counter()
+
+    def counting(profile, scenario):
+        evaluate = backend.evaluator_for(profile, scenario)
+        def wrapped(request):
+            calls[(scenario.speed_factor, tuple(sorted((scenario.headway_factor_by_group or {}).items())))] += 1
+            return evaluate(request)
+        return wrapped
+
+    c = client_for(dataclasses.replace(backend, evaluator_for=counting))
+    r = strict_json(c.post("/decision/stress", json={"package_ids": ["A", "C", "D"], "profile": "P"}))
+    assert r["status"] == "ok" and len(r["points"]) == 9
+    stressed = {sc: n for sc, n in calls.items() if sc[0] != 1.0 or any(f != 1.0 for _, f in sc[1])}
+    assert stressed and max(stressed.values()) < 12  # no first-use pass over every package at a grid point
+
+
+def test_b_h_up_to_b_h_max_is_accepted_above_is_422(client):
+    r = optimize(client, 105, N_a=3)
+    assert r.status_code == 200 and r.json()["limits"]["B_h_bus_hours"] == 105
+    assert optimize(client, 120, N_a=3).status_code == 200
+    r = optimize(client, 120.5, N_a=3)
+    assert r.status_code == 422 and "exceeds B_h_max 120.0" in r.json()["detail"]
+    s = strict_json(client.get("/decision/state"))
+    assert s["B_h_max"] == 120.0 and s["reference_bus_hours"] == 30  # fixture B 15 + C 15 + D 0
+
+
+def test_b_h_max_comes_from_config_and_bounds_the_default(tmp_path, counter):
+    from citypilot.decision_real import LIMITS_PATH, load_b_h_max
+    import yaml
+    assert load_b_h_max() == 120.0 == yaml.safe_load(LIMITS_PATH.read_text())["B_h_max"]
+    with pytest.raises(ValueError, match="exceeds B_h_max"):
+        dataclasses.replace(four_action_backend(tmp_path, counter), B_h_max=10.0)

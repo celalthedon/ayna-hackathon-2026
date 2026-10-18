@@ -63,3 +63,11 @@ def test_real_backend_on_the_m_model(m_model, tmp_path):
     assert backend.resources_for(Scenario(1.0, 1.0, backend.H_hours))(AYNA_REFERENCE).added_bus_hours == 105.0
     with pytest.raises(ValueError, match="is not the expected"):
         real_backend(m_model, tmp_path / "cache", path, "0" * 64)
+
+
+def test_real_backend_has_the_assumptions_stress_grid(m_model, tmp_path):
+    path, sha = car_table(tmp_path)
+    grid = real_backend(m_model, tmp_path / "cache", path, sha).stress_grid
+    assert dict(grid.speed_levels_kmh) == {"low": 12.0, "default": 18.0, "high": 25.0}
+    assert dict(grid.headway_levels_min["SG_R2"]) == {"low": 6.0, "default": 7.5, "high": 10.0}
+    assert dict(grid.headway_levels_min["SG_R14"]) == {"low": 4.5, "default": 5.0, "high": 11.0}
