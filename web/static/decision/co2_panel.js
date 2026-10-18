@@ -24,17 +24,41 @@
         oninput: (e) => { inputs[name] = e.target.value; } }));
     }
 
+    function coverageText() {
+      const cov = result.car_distance_coverage;
+      return cov && cov.missing > 0
+        ? `${cov.missing} of ${cov.restored} restored journeys have no modelled car distance; enter a car trip length`
+        : null;
+    }
+
+    function reasons() {
+      const by = (result.car_distance_coverage || {}).by_reason || {};
+      return Object.entries(by).map(([r, n]) => `${n} ${r}`).join(", ");
+    }
+
+    function tripInput() {
+      return el("div", { class: "row" },
+        el("label", {}, "car trip km", el("input", { type: "number", min: 0, step: "any", value: inputs.car_trip_km,
+          "aria-label": "car trip km", oninput: (e) => { inputs.car_trip_km = e.target.value; } })),
+        el("button", { class: "primary", onclick: run, disabled: !ctx.selected }, "Compute break-even"));
+    }
+
     function headline() {
+      const missing = coverageText();
       if (result.status === "needs_car_trip_km") {
         return el("div", {},
-          el("div", { class: "headline" }, "Enter a car trip length to get the break-even"),
+          el("div", { class: "headline" }, missing || "Enter a car trip length to get the break-even"),
+          tripInput(),
           el("div", { class: "muted" }, `Reference only: ${fmt(result.reference_car_trip_km)} km, ${result.reference_car_trip_km_label}. ` +
-            `Car distance of the restored ODs: ${result.car_trip_km_source}.`));
+            (missing ? `No modelled car distance: ${reasons()}.` : `Car distance of the restored ODs: ${result.car_trip_km_source}.`)));
       }
+      const user = result.car_trip_km_status !== "modelled";
       return el("div", {},
         el("div", { class: "headline" }, `Break-even: ${fmt(result.break_even_trips)} avoided car trips`),
         el("div", { class: "muted" }, `over the same ${fmt(result.period_hours)} h window, at ${fmt(result.car_trip_km, 2)} km per car trip ` +
-          `(${result.car_trip_km_status === "modelled" ? result.car_trip_km_source : "your input"})`));
+          `(${user ? "your input" : result.car_trip_km_source})`),
+        user && missing ? el("div", { class: "muted" }, `${result.car_distance_coverage.missing} of ` +
+          `${result.car_distance_coverage.restored} restored journeys have no modelled car distance (${reasons()}).`) : null);
     }
 
     function render() {
