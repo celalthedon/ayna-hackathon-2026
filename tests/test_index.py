@@ -25,15 +25,15 @@ SCENARIO = Scenario(1.0, 1.0, 3.0)
 IDENTITY = cache_identity("fixture_4action", {"fixture": "fixture_4action"})  # = four_action_backend's
 
 
-def fill(tmp_path, profile="P"):
+def fill(tmp_path, profile="P", catalog_hash=None, m_variants="all"):
     """Precompute every package into tmp_path/cache for the four-action backend's identity; returns the index path."""
     problem = problem_from(FIXTURE, tmp_path / "objectives", n_a=4)
     problem = dataclasses.replace(problem, context=dataclasses.replace(problem.context, profile=profile))
-    ctx = pc.Context(m_variants="all", problem=problem, max_package=("A", "C", "D"), identity=IDENTITY,
-                     scenario=SCENARIO, make_evaluator=lambda: Counting(), info={})
+    ctx = pc.Context(m_variants=m_variants, problem=problem, max_package=("A", "C", "D"), identity=IDENTITY,
+                     scenario=SCENARIO, make_evaluator=lambda: Counting(), info={}, catalog_hash=catalog_hash)
     entry = pc.run(ctx, tmp_path / "cache")
     assert entry["index"]["rows"] == 12 and entry["index"]["missing"] == 0
-    return tmp_path / "cache" / index_name(profile, IDENTITY, SCENARIO), problem
+    return tmp_path / "cache" / index_name(profile, IDENTITY, SCENARIO, catalog_hash), problem
 
 
 def test_index_rows_equal_the_full_files(tmp_path):
@@ -98,7 +98,87 @@ def test_an_index_for_another_model_is_ignored(tmp_path, counter, caplog):
     with caplog.at_level(logging.WARNING, logger="citypilot.decision"):
         c = client_for(four_action_backend(tmp_path, counter))
     assert strict_json(c.get("/decision/state"))["index"]["P"]["loaded"] is False
-    assert any("header does not match" in m for m in caplog.messages)
+    assert any("does not match this backend" in m for m in caplog.messages)
+
+
+# --- blocker 4: a malformed index is rejected and logged; the API never crashes and never serves it ---
+
+def _rewrite(path, change):
+    index = json.loads(path.read_text())
+    change(index)
+    path.write_text(json.dumps(index))
+
+
+def _row(index, ids):
+    return next(r for r in index["rows"] if r["candidate_ids"] == ids)
+
+
+ROW_DAMAGE = {
+    "not an object": lambda ix: ix["rows"].__setitem__(ix["rows"].index(_row(ix, ["A", "C"])), ["A", "C"]),
+    "missing field": lambda ix: _row(ix, ["A", "C"]).pop("capped_time_sum"),
+    "within_counts is a list": lambda ix: _row(ix, ["A", "C"]).update(within_counts=[1, 2, 3]),
+    "capped_time_sum is a string": lambda ix: _row(ix, ["A", "C"]).update(capped_time_sum="350.0"),
+    "candidate_ids is a string": lambda ix: _row(ix, ["A", "C"]).update(candidate_ids="A+C"),
+    "feasible is a string": lambda ix: _row(ix, ["A", "C"]).update(feasible="yes"),
+}
+
+
+@pytest.mark.parametrize("damage", sorted(ROW_DAMAGE))
+def test_a_malformed_row_is_rejected_and_the_file_cache_serves(tmp_path, counter, caplog, damage):
+    path, _ = fill(tmp_path)
+    _rewrite(path, ROW_DAMAGE[damage])
+    with caplog.at_level(logging.WARNING, logger="citypilot.decision"):
+        c = client_for(four_action_backend(tmp_path, counter))  # must not crash
+    status = strict_json(c.get("/decision/state"))["index"]["P"]
+    assert (status["loaded"], status["rows"], status["dropped"]) == (True, 11, 1)
+    assert any("dropped" in m for m in caplog.messages)
+    r = strict_json(optimize(c, 24))
+    assert r["recommendation"]["candidate_ids"] == ["A", "C", "D"] and counter.calls == 0  # A+C from its full file
+    alt = {tuple(a["candidate_ids"]): a for a in r["alternatives"]}
+    assert isinstance(alt[("A", "C")]["capped_time_sum"], float)  # never the malformed value
+
+
+def test_duplicate_rows_are_all_rejected(tmp_path, counter, caplog):
+    path, _ = fill(tmp_path)
+    _rewrite(path, lambda ix: ix["rows"].append(dict(_row(ix, ["A", "C"]), capped_time_sum=1.0)))
+    with caplog.at_level(logging.WARNING, logger="citypilot.decision"):
+        c = client_for(four_action_backend(tmp_path, counter))
+    status = strict_json(c.get("/decision/state"))["index"]["P"]
+    assert (status["rows"], status["dropped"]) == (11, 2)
+    assert any("duplicate" in m for m in caplog.messages)
+    r = strict_json(optimize(c, 24))
+    assert all(a["capped_time_sum"] != 1.0 for a in r["alternatives"])
+
+
+@pytest.mark.parametrize("content", ["{not json", json.dumps({"index_version": 2}), "[]",
+                                     "rows-not-a-list"])
+def test_an_unreadable_index_file_is_ignored(tmp_path, counter, caplog, content):
+    path, _ = fill(tmp_path)
+    if content == "rows-not-a-list":
+        _rewrite(path, lambda ix: ix.update(rows={"a": 1}))
+    else:
+        path.write_text(content)
+    with caplog.at_level(logging.WARNING, logger="citypilot.decision"):
+        c = client_for(four_action_backend(tmp_path, counter))
+    assert strict_json(c.get("/decision/state"))["index"]["P"]["loaded"] is False
+    assert any("ignored" in m for m in caplog.messages)
+    assert strict_json(optimize(c, 24))["recommendation"]["candidate_ids"] == ["A", "C", "D"]
+    assert counter.calls == 0  # every package from its full file
+
+
+# --- blocker 5: an index built for another catalog variant is never used ---
+
+def test_an_index_for_another_catalog_variant_is_never_used(tmp_path, counter, caplog):
+    path, _ = fill(tmp_path, catalog_hash="design_only-catalog", m_variants="design_only")
+    header = json.loads(path.read_text())
+    assert (header["catalog_hash"], header["m_variants"]) == ("design_only-catalog", "design_only")
+    c = client_for(four_action_backend(tmp_path, counter))  # catalog_hash None: another file name
+    assert strict_json(c.get("/decision/state"))["index"]["P"]["loaded"] is False
+    path.rename(tmp_path / "cache" / index_name("P", IDENTITY, SCENARIO, None))  # even under this backend's name
+    with caplog.at_level(logging.WARNING, logger="citypilot.decision"):
+        c = client_for(four_action_backend(tmp_path, counter))
+    assert strict_json(c.get("/decision/state"))["index"]["P"]["loaded"] is False
+    assert any("catalog" in m for m in caplog.messages)
 
 
 @pytest.fixture

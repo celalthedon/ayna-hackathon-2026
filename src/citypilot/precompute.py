@@ -241,9 +241,10 @@ def write_index(ctx: Context, cache_dir: Path) -> dict:
             continue
         resources = ctx.problem.resources(ids)
         rows.append(index_row(result, ids, resources, is_feasible(resources, limits)))
-    path = cache_dir / index_name(ctx.profile, ctx.identity, ctx.scenario)
+    path = cache_dir / index_name(ctx.profile, ctx.identity, ctx.scenario, ctx.catalog_hash)
     index = {"index_version": INDEX_VERSION, "profile": ctx.profile, "model": json.loads(_canonical(dict(ctx.identity))),
-             "scenario": _evaluator_scenario_key(ctx.scenario),
+             "scenario": _evaluator_scenario_key(ctx.scenario), "catalog_hash": ctx.catalog_hash,
+             "m_variants": ctx.m_variants,
              "feasible_limits": {f: getattr(limits, f) for f in ("B_h_bus_hours", "K_new_infra_km", "N_a_actions")},
              "created": datetime.now(timezone.utc).isoformat(), "rows": rows}
     tmp = path.with_suffix(f".{os.getpid()}.tmp")

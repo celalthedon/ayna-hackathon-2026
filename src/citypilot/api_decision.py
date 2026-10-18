@@ -243,7 +243,7 @@ def _answers(result: EvaluationResult, request: RoutingRequest) -> bool:
 
 
 
-INDEX_VERSION = 1
+INDEX_VERSION = 2  # 2: header and file name carry the catalog identity (catalog_hash, m_variants)
 INDEX_IDENTITY_FIELDS = ("contract_version", "model_version", "od_set_id", "state", "profile", "config_hash",
                          "primary_t_min", "cap_min")
 
@@ -293,11 +293,62 @@ def index_row(result: EvaluationResult, candidate_ids: tuple[str, ...], resource
             "duration_ms": result.duration_ms, "warnings": list(result.warnings)}
 
 
-def index_name(profile: str, model_identity: Mapping, scenario: Scenario) -> str:
-    """index_<profile>_<model_hash>.json; model_hash covers the model identity and the evaluator scenario."""
-    digest = hashlib.sha256(_canonical({"model": dict(model_identity),
-                                        "scenario": _evaluator_scenario_key(scenario)}).encode()).hexdigest()[:16]
-    return f"index_{profile}_{digest}.json"
+def model_hash(model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
+    """Short hash of model identity, evaluator scenario and catalog identity; names the index (and stress) files,
+    so an index built for one catalog variant never has the name another variant looks for."""
+    return hashlib.sha256(_canonical({"model": dict(model_identity), "scenario": _evaluator_scenario_key(scenario),
+                                      "catalog_hash": catalog_hash}).encode()).hexdigest()[:16]
+
+
+def index_name(profile: str, model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
+    """index_<profile>_<model_hash>.json."""
+    return f"index_{profile}_{model_hash(model_identity, scenario, catalog_hash)}.json"
+
+
+_HEX = set("0123456789abcdef")
+_NUMBER = (int, float)
+
+
+def _is_number(v, optional=False) -> bool:
+    if v is None:
+        return optional
+    return isinstance(v, _NUMBER) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _is_int(v, optional=False) -> bool:
+    if v is None:
+        return optional
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def index_row_problem(row) -> str | None:
+    """Why an index row is malformed (missing field or wrong type), or None. Rows are checked before use."""
+    if not isinstance(row, dict):
+        return "row is not an object"
+    required = {"config_hash", "candidate_ids", "within_counts", "capped_time_sum", "bus_hours", "vehicles", "actions",
+                "feasible", "duration_ms", "warnings", *INDEX_IDENTITY_FIELDS}
+    missing = sorted(required - set(row))
+    if missing:
+        return f"missing fields {missing}"
+    h = row["config_hash"]
+    checks = {
+        "config_hash": isinstance(h, str) and len(h) == 64 and set(h) <= _HEX,
+        "candidate_ids": isinstance(row["candidate_ids"], list) and all(isinstance(i, str) for i in row["candidate_ids"]),
+        "within_counts": isinstance(row["within_counts"], dict) and bool(row["within_counts"])
+        and all(isinstance(t, str) and t.isdigit() and _is_int(n) and n >= 0 for t, n in row["within_counts"].items()),
+        "capped_time_sum": _is_number(row["capped_time_sum"]),
+        "bus_hours": _is_number(row["bus_hours"], optional=True),
+        "vehicles": _is_int(row["vehicles"], optional=True),
+        "actions": _is_int(row["actions"]) and row["actions"] >= 0,
+        "feasible": isinstance(row["feasible"], bool),
+        "duration_ms": _is_number(row["duration_ms"]),
+        "warnings": isinstance(row["warnings"], list) and all(isinstance(w, str) for w in row["warnings"]),
+        "primary_t_min": _is_int(row["primary_t_min"]),
+        "cap_min": _is_number(row["cap_min"]),
+        **{f: isinstance(row[f], str) for f in ("contract_version", "model_version", "od_set_id", "state", "profile")},
+    }
+    wrong = sorted(f for f, ok in checks.items() if not ok)
+    return f"wrong type or value: {wrong}" if wrong else None
 
 
 def cache_identity(config_hash: str, input_hashes: Mapping[str, str]) -> dict:
@@ -455,22 +506,27 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         """Attach the default-scenario index: header must match; each row must be the request it claims."""
         scenario = default_scenario()
         cache = cache_for(profile, scenario)
-        path = Path(backend.cache_dir) / index_name(profile, model_identity, scenario)
+        path = Path(backend.cache_dir) / index_name(profile, model_identity, scenario, backend.catalog_hash)
         status = {"file": path.name, "rows": 0, "dropped": 0, "loaded": False}
         index_status[profile] = status
         if not path.exists():
             return
         try:
             data = json.loads(path.read_text())
-            header = (data["index_version"], data["profile"], data["model"], data["scenario"])
-            expected = (INDEX_VERSION, profile, json.loads(_canonical(model_identity)), _evaluator_scenario_key(scenario))
+            header = (data["index_version"], data["profile"], data["model"], data["scenario"], data["catalog_hash"])
+            expected = (INDEX_VERSION, profile, json.loads(_canonical(model_identity)), _evaluator_scenario_key(scenario),
+                        backend.catalog_hash)
             if json.loads(_canonical(list(header))) != json.loads(_canonical(list(expected))):
-                log.warning("index %s ignored: header does not match this backend", path.name)
+                log.warning("index %s ignored: header (model, scenario, catalog) does not match this backend", path.name)
                 return
             rows = data["rows"]
-        except (OSError, ValueError, KeyError, TypeError) as e:
+            if not isinstance(rows, list):
+                raise TypeError("rows is not a list")
+        except Exception as e:  # unreadable or malformed file: never crash, never serve it; per-file cache serves
             log.warning("index %s ignored: %s", path.name, e)
             return
+        hashes = [r.get("config_hash") for r in rows if isinstance(r, dict) and isinstance(r.get("config_hash"), str)]
+        duplicated = {h for h in hashes if hashes.count(h) > 1}
         try:
             widest = widest_problem(profile, scenario)
         except (ValueError, OSError) as e:  # no committed objective / decided for another model
@@ -478,14 +534,20 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             return
         for row in rows:
             try:
+                problem_text = index_row_problem(row)
+                if problem_text:
+                    raise ValueError(problem_text)
+                if row["config_hash"] in duplicated:
+                    raise ValueError("duplicate row for this config_hash")
                 request = build_request(widest, tuple(row["candidate_ids"]))
                 config_hash = cache.config_hash(request)
                 if row["config_hash"] != config_hash:
                     raise ValueError("config_hash is not the hash of the request it represents")
                 cache._summary(row, request).validate_request(request, config_hash)
-            except (ValueError, KeyError, TypeError) as e:
+            except Exception as e:  # a malformed row is dropped and logged; its package falls back to its full file
                 status["dropped"] += 1
-                log.warning("index %s row %s dropped: %s", path.name, row.get("candidate_ids"), e)
+                log.warning("index %s row %s dropped: %s", path.name,
+                            row.get("candidate_ids") if isinstance(row, dict) else type(row).__name__, e)
                 continue
             cache.index[config_hash] = row
         status.update(rows=len(cache.index), loaded=True)
