@@ -8,7 +8,8 @@ import json
 import logging
 import math
 import uuid
-from dataclasses import dataclass, fields, is_dataclass
+import weakref
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Callable, Literal, Mapping
 
@@ -241,6 +242,115 @@ def _answers(result: EvaluationResult, request: RoutingRequest) -> bool:
     return True
 
 
+
+INDEX_VERSION = 2  # 2: header and file name carry the catalog identity (catalog_hash, m_variants)
+INDEX_IDENTITY_FIELDS = ("contract_version", "model_version", "od_set_id", "state", "profile", "config_hash",
+                         "primary_t_min", "cap_min")
+
+
+@dataclass(frozen=True)
+class IndexedResult:
+    """Summary of one evaluation from the cache index: everything ranking needs, without the OD rows.
+    od_results is read lazily from the full cache file (map, journey inspector, removal detail, CO2)."""
+    contract_version: str
+    model_version: str
+    od_set_id: str
+    state: str
+    profile: str
+    config_hash: str
+    within_counts: Mapping[int, int]
+    capped_time_sum: float
+    primary_t_min: int
+    cap_min: float
+    duration_ms: float
+    warnings: tuple[str, ...]
+    load_full: Callable[[], EvaluationResult] = field(compare=False, repr=False)
+
+    @property
+    def od_results(self):
+        return self.load_full().od_results
+
+    def validate_request(self, request: RoutingRequest, config_hash: str | None = None) -> None:
+        """Same identity checks as EvaluationResult.validate_request; raises ValueError on a mismatch.
+        config_hash: the request's hash if already computed (it is expensive to recompute)."""
+        for name in INDEX_IDENTITY_FIELDS:
+            got = config_hash if name == "config_hash" and config_hash is not None else getattr(request, name)
+            if getattr(self, name) != got:
+                raise ValueError(f"Request/index mismatch: {name}")
+        if set(self.within_counts) != set(request.thresholds_min):
+            raise ValueError("Request/index thresholds mismatch")
+
+
+def index_row(result: EvaluationResult, candidate_ids: tuple[str, ...], resources: ResourceResult,
+              feasible: bool) -> dict:
+    deltas = [s.delta_vehicles for s in resources.per_service]
+    return {"config_hash": result.config_hash, "candidate_ids": list(candidate_ids),
+            "within_counts": {str(t): n for t, n in result.within_counts.items()},
+            "capped_time_sum": result.capped_time_sum, "bus_hours": resources.added_bus_hours,
+            "vehicles": None if any(d is None for d in deltas) else sum(deltas),
+            "actions": resources.action_count, "feasible": feasible,
+            **{name: getattr(result, name) for name in INDEX_IDENTITY_FIELDS if name != "config_hash"},
+            "duration_ms": result.duration_ms, "warnings": list(result.warnings)}
+
+
+def model_hash(model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
+    """Short hash of model identity, evaluator scenario and catalog identity; names the index (and stress) files,
+    so an index built for one catalog variant never has the name another variant looks for."""
+    return hashlib.sha256(_canonical({"model": dict(model_identity), "scenario": _evaluator_scenario_key(scenario),
+                                      "catalog_hash": catalog_hash}).encode()).hexdigest()[:16]
+
+
+def index_name(profile: str, model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
+    """index_<profile>_<model_hash>.json."""
+    return f"index_{profile}_{model_hash(model_identity, scenario, catalog_hash)}.json"
+
+
+_HEX = set("0123456789abcdef")
+_NUMBER = (int, float)
+
+
+def _is_number(v, optional=False) -> bool:
+    if v is None:
+        return optional
+    return isinstance(v, _NUMBER) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _is_int(v, optional=False) -> bool:
+    if v is None:
+        return optional
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def index_row_problem(row) -> str | None:
+    """Why an index row is malformed (missing field or wrong type), or None. Rows are checked before use."""
+    if not isinstance(row, dict):
+        return "row is not an object"
+    required = {"config_hash", "candidate_ids", "within_counts", "capped_time_sum", "bus_hours", "vehicles", "actions",
+                "feasible", "duration_ms", "warnings", *INDEX_IDENTITY_FIELDS}
+    missing = sorted(required - set(row))
+    if missing:
+        return f"missing fields {missing}"
+    h = row["config_hash"]
+    checks = {
+        "config_hash": isinstance(h, str) and len(h) == 64 and set(h) <= _HEX,
+        "candidate_ids": isinstance(row["candidate_ids"], list) and all(isinstance(i, str) for i in row["candidate_ids"]),
+        "within_counts": isinstance(row["within_counts"], dict) and bool(row["within_counts"])
+        and all(isinstance(t, str) and t.isdigit() and _is_int(n) and n >= 0 for t, n in row["within_counts"].items()),
+        "capped_time_sum": _is_number(row["capped_time_sum"]),
+        "bus_hours": _is_number(row["bus_hours"], optional=True),
+        "vehicles": _is_int(row["vehicles"], optional=True),
+        "actions": _is_int(row["actions"]) and row["actions"] >= 0,
+        "feasible": isinstance(row["feasible"], bool),
+        "duration_ms": _is_number(row["duration_ms"]),
+        "warnings": isinstance(row["warnings"], list) and all(isinstance(w, str) for w in row["warnings"]),
+        "primary_t_min": _is_int(row["primary_t_min"]),
+        "cap_min": _is_number(row["cap_min"]),
+        **{f: isinstance(row[f], str) for f in ("contract_version", "model_version", "od_set_id", "state", "profile")},
+    }
+    wrong = sorted(f for f, ok in checks.items() if not ok)
+    return f"wrong type or value: {wrong}" if wrong else None
+
+
 def cache_identity(config_hash: str, input_hashes: Mapping[str, str]) -> dict:
     """Model identity in the cache key; the router and the precompute must build it the same way."""
     return {"config_hash": config_hash, "input_hashes": dict(sorted(input_hashes.items()))}
@@ -265,6 +375,17 @@ class EvaluationCache:
         self._make_evaluator = make_evaluator
         self._evaluator = None
         self.results: dict[str, tuple[str, EvaluationResult]] = {}  # digest -> (canonical key, result)
+        self.index: dict[str, dict] = {}  # request config_hash -> index row (validated by the router)
+        self._hashes = weakref.WeakKeyDictionary()  # request -> config_hash; computing it re-validates the request
+
+    def config_hash(self, request: RoutingRequest) -> str:
+        try:
+            return self._hashes[request]
+        except KeyError:
+            value = self._hashes[request] = request.config_hash
+            return value
+        except TypeError:  # unhashable request (e.g. per-group headway factors): no memo
+            return request.config_hash
 
     def key_for(self, request: RoutingRequest) -> str:
         return _canonical({"request": request.to_dict(), "model": self.model_identity, "scenario": self.scenario_key})
@@ -272,8 +393,32 @@ class EvaluationCache:
     def path_for(self, key: str) -> Path:
         return self.directory / f"{hashlib.sha256(key.encode()).hexdigest()}.json"
 
-    def lookup(self, request: RoutingRequest) -> EvaluationResult | None:
-        """The valid stored result for this exact request (RAM, then disk), or None; never evaluates."""
+    def lookup(self, request: RoutingRequest) -> EvaluationResult | IndexedResult | None:
+        """The valid stored result for this exact request: index summary, then RAM, then disk; never evaluates."""
+        config_hash = self.config_hash(request)
+        row = self.index.get(config_hash)
+        if row is not None:
+            summary = self._summary(row, request)
+            try:
+                summary.validate_request(request, config_hash)
+                return summary
+            except ValueError as e:
+                del self.index[config_hash]
+                log.warning("index row %s dropped: %s", config_hash, e)
+        return self.lookup_full(request)
+
+    def _summary(self, row: dict, request: RoutingRequest) -> IndexedResult:
+        return IndexedResult(
+            **{name: row[name] for name in INDEX_IDENTITY_FIELDS},
+            within_counts={int(t): n for t, n in row["within_counts"].items()}, capped_time_sum=row["capped_time_sum"],
+            duration_ms=row["duration_ms"], warnings=tuple(row["warnings"]), load_full=lambda: self.full(request))
+
+    def full(self, request: RoutingRequest) -> EvaluationResult:
+        """The full result with OD rows: cached file, else a fresh evaluation."""
+        return self.lookup_full(request) or self._evaluate_fresh(request)
+
+    def lookup_full(self, request: RoutingRequest) -> EvaluationResult | None:
+        """The valid stored full result (RAM, then disk), or None; never evaluates."""
         key = self.key_for(request)
         path = self.path_for(key)
         held = self.results.get(path.stem)
@@ -286,10 +431,13 @@ class EvaluationCache:
             self.results[path.stem] = (key, result)
         return result
 
-    def evaluate(self, request: RoutingRequest) -> EvaluationResult:
+    def evaluate(self, request: RoutingRequest) -> EvaluationResult | IndexedResult:
         result = self.lookup(request)
         if result is not None:
             return result
+        return self._evaluate_fresh(request)
+
+    def _evaluate_fresh(self, request: RoutingRequest) -> EvaluationResult:
         if self._evaluator is None:
             self._evaluator = self._make_evaluator()
         result = self._evaluator(request)
@@ -347,16 +495,77 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             requires_bike=backend.requires_bike,
         )
 
-    def evaluator(profile: str, scenario: Scenario):
-        """Cached evaluator; on first use it evaluates every valid package with <= N_a_max actions once,
-        so later limit changes only re-filter and re-rank."""
+    primed: set[str] = set()
+    index_status: dict[str, dict] = {}
+
+    def widest_problem(profile: str, scenario: Scenario) -> DecisionProblem:
+        return problem(scenario, Limits(backend.limits.B_h_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
+                                        backend.limits.max_exact_packages), profile)  # enumeration uses N_a only
+
+    def load_index(profile: str) -> None:
+        """Attach the default-scenario index: header must match; each row must be the request it claims."""
+        scenario = default_scenario()
         cache = cache_for(profile, scenario)
-        widest = problem(scenario, Limits(backend.limits.B_h_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
-                                          backend.limits.max_exact_packages), profile)  # enumeration uses N_a only
-        packages = list(enumerate_packages(widest))
-        if len(packages) <= backend.limits.max_exact_packages:
-            for package in packages:
-                cache.evaluate(build_request(widest, package))
+        path = Path(backend.cache_dir) / index_name(profile, model_identity, scenario, backend.catalog_hash)
+        status = {"file": path.name, "rows": 0, "dropped": 0, "loaded": False}
+        index_status[profile] = status
+        if not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text())
+            header = (data["index_version"], data["profile"], data["model"], data["scenario"], data["catalog_hash"])
+            expected = (INDEX_VERSION, profile, json.loads(_canonical(model_identity)), _evaluator_scenario_key(scenario),
+                        backend.catalog_hash)
+            if json.loads(_canonical(list(header))) != json.loads(_canonical(list(expected))):
+                log.warning("index %s ignored: header (model, scenario, catalog) does not match this backend", path.name)
+                return
+            rows = data["rows"]
+            if not isinstance(rows, list):
+                raise TypeError("rows is not a list")
+        except Exception as e:  # unreadable or malformed file: never crash, never serve it; per-file cache serves
+            log.warning("index %s ignored: %s", path.name, e)
+            return
+        hashes = [r.get("config_hash") for r in rows if isinstance(r, dict) and isinstance(r.get("config_hash"), str)]
+        duplicated = {h for h in hashes if hashes.count(h) > 1}
+        try:
+            widest = widest_problem(profile, scenario)
+        except (ValueError, OSError) as e:  # no committed objective / decided for another model
+            log.warning("index %s not loaded: %s", path.name, e)
+            return
+        for row in rows:
+            try:
+                problem_text = index_row_problem(row)
+                if problem_text:
+                    raise ValueError(problem_text)
+                if row["config_hash"] in duplicated:
+                    raise ValueError("duplicate row for this config_hash")
+                request = build_request(widest, tuple(row["candidate_ids"]))
+                config_hash = cache.config_hash(request)
+                if row["config_hash"] != config_hash:
+                    raise ValueError("config_hash is not the hash of the request it represents")
+                cache._summary(row, request).validate_request(request, config_hash)
+            except Exception as e:  # a malformed row is dropped and logged; its package falls back to its full file
+                status["dropped"] += 1
+                log.warning("index %s row %s dropped: %s", path.name,
+                            row.get("candidate_ids") if isinstance(row, dict) else type(row).__name__, e)
+                continue
+            cache.index[config_hash] = row
+        status.update(rows=len(cache.index), loaded=True)
+        # the validated index replaces the first-use pass; packages without a row are evaluated on demand
+        primed.add(_canonical({"profile": profile, "scenario": _evaluator_scenario_key(scenario)}))
+
+    def evaluator(profile: str, scenario: Scenario):
+        """Cached evaluator; on first use it evaluates every valid package with <= N_a_max actions once
+        (index summaries when present), so later limit changes only re-filter and re-rank."""
+        cache = cache_for(profile, scenario)
+        name = _canonical({"profile": profile, "scenario": _evaluator_scenario_key(scenario)})
+        if name not in primed:
+            widest = widest_problem(profile, scenario)
+            packages = list(enumerate_packages(widest))
+            if len(packages) <= backend.limits.max_exact_packages:
+                for package in packages:
+                    cache.evaluate(build_request(widest, package))
+            primed.add(name)
         return cache.evaluate
 
     def objective_dir_for(profile: str) -> Path:
@@ -400,6 +609,9 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
     def unprocessable(e: Exception) -> HTTPException:
         return HTTPException(422, str(e))
 
+    for p in PROFILES:  # startup: only the index summaries are read; full OD files stay lazy
+        load_index(p)
+
     @router.get("/state")
     def state() -> dict:
         objective = {}
@@ -417,6 +629,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             "limits": jsonable(backend.limits),
             "N_a_max": backend.N_a_max,
             "findings": {p: text for p in PROFILES if (text := finding(p)) is not None},
+            "index": {p: dict(v) for p, v in index_status.items()},
             "objective": objective,
             "input_hashes": dict(backend.input_hashes),
             "model_hashes": {p: dict(pair) for p, pair in backend.model_hashes.items()},
