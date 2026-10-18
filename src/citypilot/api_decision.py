@@ -43,6 +43,7 @@ from citypilot.decision_engine import (
     select_objective_dir,
     mean_car_distance_km,
     no_patches,
+    objective_path_for,
     optimize,
     rank_key,
     remove_action,
@@ -244,6 +245,7 @@ def _answers(result: EvaluationResult, request: RoutingRequest) -> bool:
 
 
 
+COMPARE_INCOMPLETE = "unavailable: incomplete cache"
 INDEX_VERSION = 2  # 2: header and file name carry the catalog identity (catalog_hash, m_variants)
 INDEX_IDENTITY_FIELDS = ("contract_version", "model_version", "od_set_id", "state", "profile", "config_hash",
                          "primary_t_min", "cap_min")
@@ -498,6 +500,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
 
     primed: set[str] = set()
     index_status: dict[str, dict] = {}
+    indexed: dict[str, set[tuple[str, ...]]] = {p: set() for p in PROFILES}  # packages with a validated index row
 
     def widest_problem(profile: str, scenario: Scenario) -> DecisionProblem:
         return problem(scenario, Limits(backend.limits.B_h_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
@@ -551,6 +554,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
                             row.get("candidate_ids") if isinstance(row, dict) else type(row).__name__, e)
                 continue
             cache.index[config_hash] = row
+            indexed[profile].add(tuple(request.candidate_ids))
         status.update(rows=len(cache.index), loaded=True)
         # the validated index replaces the first-use pass; packages without a row are evaluated on demand
         primed.add(_canonical({"profile": profile, "scenario": _evaluator_scenario_key(scenario)}))
@@ -631,6 +635,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             "N_a_max": backend.N_a_max,
             "findings": {p: text for p in PROFILES if (text := finding(p)) is not None},
             "index": {p: dict(v) for p, v in index_status.items()},
+            "compare_ayna": dict(compare_status),
             "objective": objective,
             "input_hashes": dict(backend.input_hashes),
             "model_hashes": {p: dict(pair) for p, pair in backend.model_hashes.items()},
@@ -656,22 +661,51 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return stamp(optimization_json(result) | {"limits": jsonable(limits_from(body)),
                                                   "finding": finding(body.profile)}, body, "optimize")
 
-    @router.post("/compare_ayna")
-    def post_compare(body: ProfileBody) -> dict:
-        objective = committed_objective(body.profile)
+    compare_store: dict[str, tuple[str, dict]] = {}  # profile -> (fingerprint, result before stamping)
+    compare_status: dict[str, str] = {}
+
+    def gate_identity(profile: str) -> dict:
+        """The profile's gate exactly as /optimize validates it: missing, invalid or decided for another model
+        raises the same 409. Includes the gate file's SHA-256, so an altered gate never matches a stored result."""
+        objective = committed_objective(profile)
+        path = objective_path_for(objective_dir_for(profile), profile)
+        return {"objective": objective, "file": path.name, "file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "hashes": dict(backend.model_hashes[profile])}
+
+    def compare_fingerprint(profile: str, gate: dict) -> str:
+        """Everything compare_ayna depends on: gate, model, catalog, the index file on disk and the limits."""
+        path = Path(backend.cache_dir) / index_name(profile, model_identity, default_scenario(), backend.catalog_hash)
+        try:
+            st = path.stat()
+            index = [path.name, st.st_size, st.st_mtime_ns]
+        except OSError:
+            index = None
+        limits = {f: getattr(backend.limits, f) for f in ("B_h_bus_hours", "K_new_infra_km", "N_a_actions")}
+        return _canonical({"gate": gate, "model": dict(model_identity), "catalog_hash": backend.catalog_hash,
+                           "index": index, "limits": limits, "N_a_max": backend.N_a_max})
+
+    def compare_packages_indexed(profile: str) -> bool:
+        """Every package compare_ayna needs (all up to N_a_max, and the reference) has a validated index row."""
+        packages = set(enumerate_packages(widest_problem(profile, default_scenario())))
+        packages.add(tuple(sorted(backend.reference_package_ids or ())))
+        return packages <= indexed[profile]
+
+    def compute_compare(profile: str) -> dict:
+        """AYNA reference vs the optimiser at the reference's own bus-hours, N_a_max actions. Inputs are fixed."""
+        objective = committed_objective(profile)
         reference_ids = backend.reference_package_ids
         if not reference_ids:
             raise HTTPException(409, "no AYNA reference package in the catalog")
         scenario = default_scenario()
         try:
-            reference_problem = problem(scenario, backend.limits, body.profile)
+            reference_problem = problem(scenario, backend.limits, profile)
             reference_resources = reference_problem.resources(tuple(sorted(reference_ids)))
             if reference_resources.added_bus_hours is None:
                 raise ValueError(f"reference package {reference_ids}: bus-hours unknown")
             limits = Limits(reference_resources.added_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
                             backend.limits.max_exact_packages)
-            result = optimize(problem(scenario, limits, body.profile), evaluator(body.profile, scenario))
-            ref_eval = evaluator(body.profile, scenario)(build_request(reference_problem, reference_ids))
+            result = optimize(problem(scenario, limits, profile), evaluator(profile, scenario))
+            ref_eval = evaluator(profile, scenario)(build_request(reference_problem, reference_ids))
         except ValueError as e:
             raise unprocessable(e)
         rec = result.recommendation
@@ -688,8 +722,36 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         reference = package_json(PackageOutcome(tuple(sorted(reference_ids)), ref_eval, reference_resources, True))
         best = package_json(rec)
         difference = {k: best[k] - reference[k] for k in ("within_t", "capped_time_sum", "bus_hours", "new_km", "actions")}
-        return stamp({"reference": reference, "optimizer": optimization_json(result), "limits": jsonable(limits),
-                      "difference": difference, "verdict": verdict}, body, "compare_ayna")
+        return {"reference": reference, "optimizer": optimization_json(result), "limits": jsonable(limits),
+                "difference": difference, "verdict": verdict}
+
+    def stored_compare(profile: str) -> dict:
+        """The stored result while gate, model, catalog, index and limits are unchanged (checked on every call,
+        the gate exactly as /optimize does); otherwise reload the index and recompute. With an index loaded,
+        it is computed only from complete index rows, never by routing."""
+        gate = gate_identity(profile)  # 409 like /optimize when the gate is missing, invalid or for another model
+        fingerprint = compare_fingerprint(profile, gate)
+        held = compare_store.get(profile)
+        if held is not None and held[0] == fingerprint:
+            return held[1]
+        if held is not None:
+            caches.clear()  # something changed: drop summaries and the first-use pass, then reload the indexes
+            primed.clear()
+            for p in PROFILES:
+                indexed[p].clear()
+                load_index(p)
+            compare_store.clear()
+        if index_status.get(profile, {}).get("loaded") and not compare_packages_indexed(profile):
+            compare_status[profile] = COMPARE_INCOMPLETE
+            raise HTTPException(409, f"compare_ayna {COMPARE_INCOMPLETE}")
+        result = compute_compare(profile)
+        compare_store[profile] = (fingerprint, result)
+        compare_status[profile] = "ready"
+        return result
+
+    @router.post("/compare_ayna")
+    def post_compare(body: ProfileBody) -> dict:
+        return stamp(dict(stored_compare(body.profile)), body, "compare_ayna")
 
     @router.post("/stress")
     def post_stress(body: PackageBody) -> dict:
@@ -761,5 +823,15 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return stamp(jsonable(r) | {"car_trip_km_source": source, "car_trip_km_status": status,
                                     "car_distance_coverage": coverage, "factor_statuses": dict(co2.factor_statuses)},
                      body, "co2")
+
+    for p in PROFILES:  # startup: compare_ayna has fixed inputs; once per profile, from a complete index only
+        if not index_status.get(p, {}).get("loaded"):
+            compare_status[p] = "on request (no index)"
+            continue  # without an index it would evaluate every package; it is computed on the first request
+        try:
+            stored_compare(p)  # never routes: an incomplete index marks it unavailable instead
+        except HTTPException as e:  # incomplete cache / objective not committed: reported per request and in /state
+            compare_status.setdefault(p, f"unavailable: {e.detail}")
+            log.warning("compare_ayna for %s not precomputed: %s", p, e.detail)
 
     return router

@@ -181,6 +181,74 @@ def test_an_index_for_another_catalog_variant_is_never_used(tmp_path, counter, c
     assert any("catalog" in m for m in caplog.messages)
 
 
+def test_compare_ayna_is_computed_once_at_startup_and_after_an_index_change(tmp_path, counter, monkeypatch):
+    import citypilot.api_decision as api
+    path, _ = fill(tmp_path)
+    runs = []
+    real_optimize = api.optimize
+    monkeypatch.setattr(api, "optimize", lambda problem, evaluate: runs.append(problem.limits) or real_optimize(problem, evaluate))
+    c = client_for(four_action_backend(tmp_path, counter))  # reference ("B", "C", "D")
+    assert len(runs) == 1  # P at startup (indexed); B has no index here and waits for its first request
+    first = strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))
+    second = strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))
+    assert len(runs) == 1 and first == second and counter.calls == 0
+    assert first["limits"]["N_a_actions"] == 4 and first["limits"]["B_h_bus_hours"] == first["reference"]["bus_hours"]
+    path.write_text(path.read_text() + " ")  # the index file changed on disk
+    third = strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))
+    assert len(runs) == 2 and third["verdict"] == first["verdict"] and third["reference"] == first["reference"]
+
+
+# --- #35 P1-a: the stored comparison obeys the same gate rule as /optimize ---
+
+def test_compare_ayna_after_the_gate_is_deleted_is_409(tmp_path, counter):
+    fill(tmp_path)
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert c.post("/decision/compare_ayna", json={"profile": "P"}).status_code == 200
+    (tmp_path / "objectives" / "objective_decision_P.json").unlink()
+    r = c.post("/decision/compare_ayna", json={"profile": "P"})
+    assert r.status_code == 409 and r.json()["detail"] == optimize(c, 24).json()["detail"] == "objective not committed"
+
+
+def test_compare_ayna_for_a_gate_of_another_model_is_409(tmp_path, counter):
+    from decision_testkit import h, write_objective
+    fill(tmp_path)
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert c.post("/decision/compare_ayna", json={"profile": "P"}).status_code == 200
+    write_objective(tmp_path / "objectives", "count", "P", {"normal": h("x"), "disrupted": h("y")})
+    r = c.post("/decision/compare_ayna", json={"profile": "P"})
+    assert r.status_code == 409 and r.json()["detail"] == "objective decided for another model"
+
+
+def test_compare_ayna_after_the_gate_changes_is_recomputed(tmp_path, counter):
+    from decision_testkit import FIXTURE_HASHES, write_objective
+    fill(tmp_path)
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))["optimizer"]["objective"] == "count"
+    write_objective(tmp_path / "objectives", "sum", "P", FIXTURE_HASHES)  # same model, other objective
+    r = strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))
+    assert r["optimizer"]["objective"] == "sum"  # never the old result
+
+
+# --- #35 P1-b: startup never routes; an incomplete index makes compare_ayna unavailable ---
+
+def test_incomplete_index_startup_makes_no_evaluation_and_reports_it(tmp_path, counter):
+    path, _ = fill(tmp_path)
+    _rewrite(path, lambda ix: ix["rows"].remove(_row(ix, ["A", "C"])))
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert counter.calls == 0  # startup made no evaluate call
+    state = strict_json(c.get("/decision/state"))
+    assert state["index"]["P"]["rows"] == 11 and state["compare_ayna"]["P"] == "unavailable: incomplete cache"
+    r = c.post("/decision/compare_ayna", json={"profile": "P"})
+    assert r.status_code == 409 and r.json()["detail"] == "compare_ayna unavailable: incomplete cache"
+    assert counter.calls == 0
+
+
+def test_complete_index_startup_is_ready_without_evaluation(tmp_path, counter):
+    fill(tmp_path)
+    c = client_for(four_action_backend(tmp_path, counter))
+    assert counter.calls == 0 and strict_json(c.get("/decision/state"))["compare_ayna"]["P"] == "ready"
+
+
 @pytest.fixture
 def counter():
     return CountingEvaluators(FIXTURE)
@@ -252,3 +320,9 @@ def test_real_startup_then_state_and_optimize_under_2_s(real, tmp_path):
     assert r.status_code == 200 and r.json()["recommendation"]["candidate_ids"] == ["SVC_M5_A"]
     assert all(state["index"][p]["loaded"] and state["index"][p]["dropped"] == 0 for p in ("P", "B"))
     assert first_s < 2.0
+    for profile in ("P", "B"):  # stored at startup: the endpoint only returns it
+        started = time.perf_counter()
+        c = client.post("/decision/compare_ayna", json={"profile": profile})
+        compare_s = time.perf_counter() - started
+        print(f"compare_ayna {profile} {compare_s:.3f} s")
+        assert c.status_code == 200 and compare_s < 0.1
