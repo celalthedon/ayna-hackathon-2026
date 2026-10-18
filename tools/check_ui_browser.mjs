@@ -9,11 +9,13 @@ import {spawn} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
+import {checkMobileLayout} from './mobile_browser_checks.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const live=process.argv.includes('--live');
+const mobile=process.argv.includes('--mobile');
 const liveURL=process.env.CITYPILOT_LIVE_URL||'http://127.0.0.1:8000/';
-const output=path.join(repo,'docs/ui-verification');fs.mkdirSync(output,{recursive:true});
+const output=path.join(repo,mobile?'outputs/mobile-verification':'docs/ui-verification');fs.mkdirSync(output,{recursive:true});
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'citypilot-ui-browser-'));
 const chrome=process.env.CITYPILOT_CHROME||'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const only2D=process.env.CITYPILOT_BROWSER_2D_ONLY==='1';
@@ -29,7 +31,7 @@ async function intercept(params) {
   const url=new URL(params.request.url);requests.push(url.href);
   let body,status=200,type='application/json';
   if(url.hostname!=='citypilot-ui.test'){body=Buffer.from('{}');status=404;}
-  else if(url.pathname==='/routing/ready'){status=503;body=Buffer.from(JSON.stringify({error:{code:'model_not_ready',message:'Browser smoke check: real Python API unavailable in this execution session'}}));}
+  else if(url.pathname==='/routing/ready'){status=503;body=Buffer.from(JSON.stringify({error:{code:'model_not_ready',message:mobile?'Layout-only browser check: existing API not contacted':'Browser smoke check: real Python API unavailable in this execution session'}}));}
   else if(url.pathname==='/citypilot-capabilities'){body=Buffer.from('{"decision_available":false,"decision_status":"pending_real_backend"}');}
   else {
     const file=url.pathname==='/'?path.join(repo,'web/citypilot.html'):url.pathname.startsWith('/citypilot-assets/')?path.resolve(repo,'web/static',url.pathname.slice('/citypilot-assets/'.length)):null;
@@ -66,6 +68,9 @@ try {
   await until("['ready','error','busy'].includes(document.getElementById('routing-status')?.dataset.state)");
   assert.equal(await evaluate("document.getElementById('render-error').hidden"),true);
   assert.equal(await evaluate(only2D?"!!document.querySelector('#viewport>svg')":"!!document.querySelector('#viewport canvas')"),true);
+  if(mobile){
+    await checkMobileLayout({send,evaluate,click,screenshot,until,checks});
+  } else {
   if(live) {
     assert.equal(await evaluate("document.getElementById('routing-status').dataset.state"),'ready');
     assert.equal(await evaluate("document.getElementById('origin').options.length"),302);
@@ -106,10 +111,11 @@ try {
   assert.equal(await evaluate("document.querySelector('[data-view=both]').disabled"),true);
   await screenshot('light-2d-fallback');checks.push('2D SVG fallback renders full pilot with batched paths and disclosed lack of exploded layers.');
   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false});await screenshot('laptop-1280-2d');
+  }
   assert.equal(exceptions.length,0,JSON.stringify(exceptions));assert.equal(consoleErrors.length,0,JSON.stringify(consoleErrors));
   assert.ok(requests.every(u=>!u.startsWith('file:')));
   assert.ok(requests.filter(u=>u.includes('/routing/ready')).length===2,'No automatic routing retry storm');
-  const report={kind:live?'live-integrated-app':'browser-static-assets-with-CDP-interception',real_api_end_to_end:live,api_response:live?'Actual local API':'503 deliberately supplied: Python runtime unavailable',browser:await send('Browser.getVersion'),checks,exceptions,consoleErrors,request_count:requests.length,file_requests:requests.filter(u=>u.startsWith('file:')),screenshots:fs.readdirSync(output).filter(n=>n.endsWith('.png'))};
+  const report={kind:live?'live-integrated-app':'browser-static-assets-with-CDP-interception',real_api_end_to_end:live,api_response:live?'Actual local API':mobile?'503 deliberately supplied: layout-only check; existing API not contacted':'503 deliberately supplied: Python runtime unavailable',browser:await send('Browser.getVersion'),checks,exceptions,consoleErrors,request_count:requests.length,file_requests:requests.filter(u=>u.startsWith('file:')),screenshots:fs.readdirSync(output).filter(n=>n.endsWith('.png'))};
   fs.writeFileSync(path.join(output,'browser-smoke.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 } catch(error) {
   console.error('Browser smoke failed:',error?.message||String(error),'Chrome exit:',browser.exitCode,'Chrome log:',stderr.slice(-3000));
