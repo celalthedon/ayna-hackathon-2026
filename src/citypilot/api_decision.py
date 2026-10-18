@@ -656,22 +656,34 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return stamp(optimization_json(result) | {"limits": jsonable(limits_from(body)),
                                                   "finding": finding(body.profile)}, body, "optimize")
 
-    @router.post("/compare_ayna")
-    def post_compare(body: ProfileBody) -> dict:
-        objective = committed_objective(body.profile)
+    compare_store: dict[str, tuple[tuple, dict]] = {}  # profile -> (fingerprint, result before stamping)
+
+    def compare_fingerprint(profile: str) -> tuple:
+        """What compare_ayna depends on besides fixed backend fields: the index file on disk."""
+        path = Path(backend.cache_dir) / index_name(profile, model_identity, default_scenario())
+        try:
+            st = path.stat()
+            index = (path.name, st.st_size, st.st_mtime_ns)
+        except OSError:
+            index = None
+        return (_canonical(model_identity), index, backend.limits.K_new_infra_km, backend.N_a_max)
+
+    def compute_compare(profile: str) -> dict:
+        """AYNA reference vs the optimiser at the reference's own bus-hours, N_a_max actions. Inputs are fixed."""
+        objective = committed_objective(profile)
         reference_ids = backend.reference_package_ids
         if not reference_ids:
             raise HTTPException(409, "no AYNA reference package in the catalog")
         scenario = default_scenario()
         try:
-            reference_problem = problem(scenario, backend.limits, body.profile)
+            reference_problem = problem(scenario, backend.limits, profile)
             reference_resources = reference_problem.resources(tuple(sorted(reference_ids)))
             if reference_resources.added_bus_hours is None:
                 raise ValueError(f"reference package {reference_ids}: bus-hours unknown")
             limits = Limits(reference_resources.added_bus_hours, backend.limits.K_new_infra_km, backend.N_a_max,
                             backend.limits.max_exact_packages)
-            result = optimize(problem(scenario, limits, body.profile), evaluator(body.profile, scenario))
-            ref_eval = evaluator(body.profile, scenario)(build_request(reference_problem, reference_ids))
+            result = optimize(problem(scenario, limits, profile), evaluator(profile, scenario))
+            ref_eval = evaluator(profile, scenario)(build_request(reference_problem, reference_ids))
         except ValueError as e:
             raise unprocessable(e)
         rec = result.recommendation
@@ -688,8 +700,28 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         reference = package_json(PackageOutcome(tuple(sorted(reference_ids)), ref_eval, reference_resources, True))
         best = package_json(rec)
         difference = {k: best[k] - reference[k] for k in ("within_t", "capped_time_sum", "bus_hours", "new_km", "actions")}
-        return stamp({"reference": reference, "optimizer": optimization_json(result), "limits": jsonable(limits),
-                      "difference": difference, "verdict": verdict}, body, "compare_ayna")
+        return {"reference": reference, "optimizer": optimization_json(result), "limits": jsonable(limits),
+                "difference": difference, "verdict": verdict}
+
+    def stored_compare(profile: str) -> dict:
+        """The stored result while the model and index are unchanged; otherwise reload the index and recompute."""
+        fingerprint = compare_fingerprint(profile)
+        held = compare_store.get(profile)
+        if held is not None and held[0] == fingerprint:
+            return held[1]
+        if held is not None:
+            caches.clear()  # index changed on disk: drop summaries and the first-use pass, then reload
+            primed.clear()
+            for p in PROFILES:
+                load_index(p)
+            compare_store.clear()
+        result = compute_compare(profile)
+        compare_store[profile] = (fingerprint, result)
+        return result
+
+    @router.post("/compare_ayna")
+    def post_compare(body: ProfileBody) -> dict:
+        return stamp(dict(stored_compare(body.profile)), body, "compare_ayna")
 
     @router.post("/stress")
     def post_stress(body: PackageBody) -> dict:
@@ -761,5 +793,13 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return stamp(jsonable(r) | {"car_trip_km_source": source, "car_trip_km_status": status,
                                     "car_distance_coverage": coverage, "factor_statuses": dict(co2.factor_statuses)},
                      body, "co2")
+
+    for p in PROFILES:  # startup: compare_ayna has fixed inputs; once per profile whose index loaded (no evaluations)
+        if not index_status.get(p, {}).get("loaded"):
+            continue  # without an index it would evaluate every package; it is computed on the first request
+        try:
+            stored_compare(p)
+        except HTTPException as e:  # e.g. objective not committed: the endpoint reports it per request
+            log.warning("compare_ayna for %s not precomputed: %s", p, e.detail)
 
     return router

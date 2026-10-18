@@ -181,6 +181,23 @@ def test_an_index_for_another_catalog_variant_is_never_used(tmp_path, counter, c
     assert any("catalog" in m for m in caplog.messages)
 
 
+def test_compare_ayna_is_computed_once_at_startup_and_after_an_index_change(tmp_path, counter, monkeypatch):
+    import citypilot.api_decision as api
+    path, _ = fill(tmp_path)
+    runs = []
+    real_optimize = api.optimize
+    monkeypatch.setattr(api, "optimize", lambda problem, evaluate: runs.append(problem.limits) or real_optimize(problem, evaluate))
+    c = client_for(four_action_backend(tmp_path, counter))  # reference ("B", "C", "D")
+    assert len(runs) == 1  # P at startup (indexed); B has no index here and waits for its first request
+    first = strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))
+    second = strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))
+    assert len(runs) == 1 and first == second and counter.calls == 0
+    assert first["limits"]["N_a_actions"] == 4 and first["limits"]["B_h_bus_hours"] == first["reference"]["bus_hours"]
+    path.write_text(path.read_text() + " ")  # the index file changed on disk
+    third = strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))
+    assert len(runs) == 2 and third["verdict"] == first["verdict"] and third["reference"] == first["reference"]
+
+
 @pytest.fixture
 def counter():
     return CountingEvaluators(FIXTURE)
@@ -252,3 +269,9 @@ def test_real_startup_then_state_and_optimize_under_2_s(real, tmp_path):
     assert r.status_code == 200 and r.json()["recommendation"]["candidate_ids"] == ["SVC_M5_A"]
     assert all(state["index"][p]["loaded"] and state["index"][p]["dropped"] == 0 for p in ("P", "B"))
     assert first_s < 2.0
+    for profile in ("P", "B"):  # stored at startup: the endpoint only returns it
+        started = time.perf_counter()
+        c = client.post("/decision/compare_ayna", json={"profile": profile})
+        compare_s = time.perf_counter() - started
+        print(f"compare_ayna {profile} {compare_s:.3f} s")
+        assert c.status_code == 200 and compare_s < 0.1
