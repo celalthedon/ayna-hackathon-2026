@@ -274,6 +274,28 @@ def test_complete_index_startup_is_ready_without_evaluation(tmp_path, counter):
     assert counter.calls == 0 and strict_json(c.get("/decision/state"))["compare_ayna"]["P"] == "ready"
 
 
+# --- ranking policy in the identity of stored (derived) compare_ayna results ---
+
+def test_stored_comparison_is_reused_and_a_new_ranking_policy_recomputes_it(tmp_path, counter, monkeypatch):
+    import citypilot.api_decision as api
+    fill(tmp_path)
+    runs = []
+    real_optimize = api.optimize
+    monkeypatch.setattr(api, "optimize", lambda problem, evaluate: runs.append(1) or real_optimize(problem, evaluate))
+    first = strict_json(client_for(four_action_backend(tmp_path, counter)).post("/decision/compare_ayna",
+                                                                               json={"profile": "P"}))
+    (stored,) = (tmp_path / "cache").glob("compare_P_*.json")
+    policy = lambda: json.loads(json.loads(stored.read_text())["fingerprint"])["ranking_policy"]  # noqa: E731
+    assert len(runs) == 1 and policy() == "quantised-1e-6-v1"
+    c = client_for(four_action_backend(tmp_path, counter))  # new router: served from the file, not recomputed
+    assert len(runs) == 1 and strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))["verdict"] == first["verdict"]
+    monkeypatch.setattr(api, "RANKING_POLICY", "other-policy-v0")
+    c = client_for(four_action_backend(tmp_path, counter))
+    again = strict_json(c.post("/decision/compare_ayna", json={"profile": "P"}))
+    assert len(runs) == 2 and policy() == "other-policy-v0"
+    assert again["reference"] == first["reference"] and counter.calls == 0  # derived from the index only
+
+
 @pytest.fixture
 def counter():
     return CountingEvaluators(FIXTURE)

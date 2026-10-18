@@ -127,3 +127,17 @@ def test_another_catalog_recomputes(tmp_path, runs):
     c2 = client_for(dataclasses.replace(b, catalog_hash="design_only-catalog"))
     stress(c2, default_package(c2))
     assert len(runs) == 2
+
+
+def test_a_new_ranking_policy_recomputes_the_stored_stress(tmp_path, runs, monkeypatch):
+    b = backend(tmp_path)
+    c = client_for(b)
+    package = default_package(c)
+    stress(c, package)
+    stress(client_for(b), package)
+    assert len(runs) == 1
+    monkeypatch.setattr(api, "RANKING_POLICY", "other-policy-v0")
+    stress(client_for(b), package)
+    assert len(runs) == 2
+    (stored,) = (tmp_path / "cache").glob("stress_P_*.json")
+    assert json.loads(stored.read_text())["key"]["ranking_policy"] == "other-policy-v0"

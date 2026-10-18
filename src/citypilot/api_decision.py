@@ -45,6 +45,7 @@ from citypilot.decision_engine import (
     no_patches,
     objective_path_for,
     optimize,
+    RANKING_POLICY,
     rank_key,
     remove_action,
     stress_test,
@@ -367,6 +368,11 @@ def index_row_problem(row, od_population: int | None = None) -> str | None:
 
 
 STRESS_VERSION = 1
+
+
+def compare_name(profile: str, model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
+    """compare_<profile>_<model_hash>.json: the stored compare_ayna result (derived from the index)."""
+    return f"compare_{profile}_{model_hash(model_identity, scenario, catalog_hash)}.json"
 
 
 def stress_name(profile: str, model_identity: Mapping, scenario: Scenario, catalog_hash: str | None) -> str:
@@ -708,17 +714,38 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         return {"objective": objective, "file": path.name, "file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "hashes": dict(backend.model_hashes[profile])}
 
-    def compare_fingerprint(profile: str, gate: dict) -> str:
-        """Everything compare_ayna depends on: gate, model, catalog, the index file on disk and the limits."""
+    index_hashes: dict[tuple, str] = {}  # (name, size, mtime_ns) -> SHA-256 of the index file
+
+    def index_identity(profile: str) -> list | None:
+        """The index file by name and content (SHA-256, memoised per size/mtime), so a stored result
+        survives a copy or unzip but not a changed index."""
         path = Path(backend.cache_dir) / index_name(profile, model_identity, default_scenario(), backend.catalog_hash)
         try:
             st = path.stat()
-            index = [path.name, st.st_size, st.st_mtime_ns]
         except OSError:
-            index = None
+            return None
+        stat = (path.name, st.st_size, st.st_mtime_ns)
+        if stat not in index_hashes:
+            index_hashes[stat] = hashlib.sha256(path.read_bytes()).hexdigest()
+        return [path.name, index_hashes[stat]]
+
+    def compare_fingerprint(profile: str, gate: dict) -> str:
+        """Everything compare_ayna depends on: gate, model, catalog, the index file, the limits, the ranking policy."""
         limits = {f: getattr(backend.limits, f) for f in ("B_h_bus_hours", "K_new_infra_km", "N_a_actions")}
         return _canonical({"gate": gate, "model": dict(model_identity), "catalog_hash": backend.catalog_hash,
-                           "index": index, "limits": limits, "N_a_max": backend.N_a_max})
+                           "index": index_identity(profile), "limits": limits, "N_a_max": backend.N_a_max,
+                           "ranking_policy": RANKING_POLICY})
+
+    def compare_path(profile: str) -> Path:
+        return Path(backend.cache_dir) / compare_name(profile, model_identity, default_scenario(), backend.catalog_hash)
+
+    def stored_compare_file(profile: str, fingerprint: str) -> dict | None:
+        """The persisted comparison if its stored fingerprint equals the current one; otherwise None."""
+        try:
+            stored = json.loads(compare_path(profile).read_text())
+            return stored["result"] if stored["fingerprint"] == fingerprint else None
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
 
     def compare_packages_indexed(profile: str) -> bool:
         """Every package compare_ayna needs (all up to N_a_max, and the reference) has a validated index row."""
@@ -777,10 +804,16 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
                 indexed[p].clear()
                 load_index(p)
             compare_store.clear()
-        if index_status.get(profile, {}).get("loaded") and not compare_packages_indexed(profile):
-            compare_status[profile] = COMPARE_INCOMPLETE
-            raise HTTPException(409, f"compare_ayna {COMPARE_INCOMPLETE}")
-        result = compute_compare(profile)
+        result = stored_compare_file(profile, fingerprint)
+        if result is None:
+            if index_status.get(profile, {}).get("loaded") and not compare_packages_indexed(profile):
+                compare_status[profile] = COMPARE_INCOMPLETE
+                raise HTTPException(409, f"compare_ayna {COMPARE_INCOMPLETE}")
+            result = compute_compare(profile)
+            path = compare_path(profile)
+            tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+            tmp.write_text(_canonical({"fingerprint": fingerprint, "result": result}))
+            tmp.replace(path)  # derived from the index; recomputed whenever the fingerprint changes
         compare_store[profile] = (fingerprint, result)
         compare_status[profile] = "ready"
         return result
@@ -825,7 +858,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
                                               "headway_levels_min": {g: dict(v) for g, v in grid.headway_levels_min.items()},
                                               "H_hours": backend.H_hours}
         return json.loads(_canonical({
-            "version": STRESS_VERSION, "model": dict(model_identity), "profile": profile,
+            "version": STRESS_VERSION, "model": dict(model_identity), "profile": profile, "ranking_policy": RANKING_POLICY,
             "package_id": package_id(package_ids),
             "grid_hash": hashlib.sha256(_canonical(grid_def).encode()).hexdigest()[:16],
             "limits": {f: getattr(backend.limits, f) for f in ("B_h_bus_hours", "K_new_infra_km", "N_a_actions")},
