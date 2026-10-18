@@ -20,8 +20,8 @@ manifest records the finding instead.
 import argparse
 import json
 import multiprocessing
+import functools
 import os
-import resource
 import statistics
 import subprocess
 import sys
@@ -103,8 +103,15 @@ def package_id(ids: tuple[str, ...]) -> str:
     return "+".join(ids) or "NO_ACTION"
 
 
-def _peak_rss_kb() -> int:
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss  # KiB on Linux
+START_METHOD = "spawn"  # the only start method on Windows; workers rebuild their context from a picklable factory
+
+
+def _rss_kb() -> int:
+    """Current RSS in KiB (psutil; works on Windows and Linux). Windows also reports its peak working set."""
+    import psutil
+
+    info = psutil.Process().memory_info()
+    return max(info.rss, getattr(info, "peak_wset", 0)) // 1024
 
 
 def evaluate_chunk(ctx: Context, packages: list[tuple[str, ...]], cache_dir: Path, log_path: Path | None,
@@ -112,6 +119,7 @@ def evaluate_chunk(ctx: Context, packages: list[tuple[str, ...]], cache_dir: Pat
     """Look up or evaluate each package; one log line per package; errors are recorded, never raised."""
     cache = EvaluationCache(cache_dir, dict(ctx.identity), ctx.scenario, ctx.make_evaluator)
     records = []
+    peak = _rss_kb()
     log = open(log_path, "a", encoding="utf-8") if log_path else None
     try:
         for ids in packages:
@@ -128,6 +136,7 @@ def evaluate_chunk(ctx: Context, packages: list[tuple[str, ...]], cache_dir: Pat
                 record["cache"] = "error"
                 record["error"] = f"{type(e).__name__}: {e}"
             record["duration_ms"] = (time.perf_counter() - started) * 1000
+            peak = max(peak, _rss_kb())  # sampled after every package
             records.append(record)
             if log:
                 log.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -135,7 +144,7 @@ def evaluate_chunk(ctx: Context, packages: list[tuple[str, ...]], cache_dir: Pat
     finally:
         if log:
             log.close()
-    return records, _peak_rss_kb()
+    return records, peak
 
 
 def same_travel_times(a, b) -> bool:
@@ -161,26 +170,29 @@ def max_package_check(ctx: Context, cache_dir: Path) -> dict:
             "capped_time_sum": {"max_package": strongest.capped_time_sum, "disrupted": disrupted.capped_time_sum}}
 
 
-_FORKED: Context | None = None  # set in the parent before forking; workers inherit the loaded model
+_WORKER: Context | None = None  # one per spawned worker process, built once by _init_worker
 
 
-def _forked_chunk(packages, cache_dir, log_path, worker):
-    return evaluate_chunk(_FORKED, packages, cache_dir, log_path, worker)
+def _init_worker(context_factory) -> None:
+    global _WORKER
+    _WORKER = context_factory()
 
 
-def _run_workers(ctx: Context, packages, cache_dir: Path, log_path: Path, workers: int):
+def _worker_chunk(packages, cache_dir, log_path, worker):
+    return evaluate_chunk(_WORKER, packages, cache_dir, log_path, worker)
+
+
+def _run_workers(ctx: Context, packages, cache_dir: Path, log_path: Path, workers: int, context_factory=None):
     if workers == 1 or len(packages) <= 1:
         records, rss = evaluate_chunk(ctx, packages, cache_dir, log_path)
         return records, [rss]
-    global _FORKED
-    _FORKED = ctx
+    if context_factory is None:
+        raise ValueError("workers > 1 needs a picklable context_factory (spawned workers rebuild the context)")
     chunks = [packages[i::workers] for i in range(workers)]
-    try:
-        with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("fork")) as pool:
-            done = [pool.submit(_forked_chunk, chunk, cache_dir, log_path, i) for i, chunk in enumerate(chunks)]
-            results = [f.result() for f in done]
-    finally:
-        _FORKED = None
+    with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context(START_METHOD),
+                             initializer=_init_worker, initargs=(context_factory,)) as pool:
+        done = [pool.submit(_worker_chunk, chunk, cache_dir, log_path, i) for i, chunk in enumerate(chunks)]
+        results = [f.result() for f in done]
     return [r for records, _ in results for r in records], [rss for _, rss in results]
 
 
@@ -205,8 +217,9 @@ def library_versions() -> dict[str, str | None]:
     return versions
 
 
-def run(ctx: Context, cache_dir: Path, workers: int = 1, limit: int | None = None) -> dict:
-    """Precompute and merge this run into the manifest; returns the run entry."""
+def run(ctx: Context, cache_dir: Path, workers: int = 1, limit: int | None = None, context_factory=None) -> dict:
+    """Precompute and merge this run into the manifest; returns the run entry. workers > 1 spawns processes
+    that each build their context with context_factory() (picklable, e.g. functools.partial(build_context, ...))."""
     if workers < 1:
         raise ValueError(f"workers must be >= 1, got {workers}")
     if limit is not None and limit < 1:
@@ -222,7 +235,8 @@ def run(ctx: Context, cache_dir: Path, workers: int = 1, limit: int | None = Non
         if check["equals_disrupted"]:
             selected, finding = [], B_NO_EFFECT
     log_path = cache_dir / f"precompute_{ctx.profile}_{ctx.m_variants}.log.jsonl"
-    records, rss = _run_workers(ctx, selected, cache_dir, log_path, workers) if selected else ([], [_peak_rss_kb()])
+    records, rss = (_run_workers(ctx, selected, cache_dir, log_path, workers, context_factory) if selected
+                    else ([], [_rss_kb()]))
     routing_ms = [r["routing_duration_ms"] for r in records if r["cache"] == "miss"]
     failed = [{"id": r["id"], "error": r["error"]} for r in records if r["cache"] == "error"]
     entry = {
@@ -286,7 +300,8 @@ def main(argv=None) -> int:
                           "counts_by_N_a": counts_by_n_a(packages, ctx.problem.limits.N_a_actions),
                           "max_package": list(ctx.max_package)}, indent=2))
         return 0
-    entry = run(ctx, args.cache_dir, args.workers, args.limit)
+    entry = run(ctx, args.cache_dir, args.workers, args.limit,
+                context_factory=functools.partial(build_context, args.bundle, args.config, args.profile, args.m_variants))
     print(json.dumps({k: entry[k] for k in ("profile", "m_variants", "counts", "wall_s", "duration_ms",
                                              "peak_rss_kb_per_worker", "finding")}, indent=2))
     return 1 if entry["failed_ids"] else 0

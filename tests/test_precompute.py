@@ -92,11 +92,37 @@ def test_manifest_fields(tmp_path):
         assert entry["duration_ms"]["mean"] is not None and len(entry["peak_rss_kb_per_worker"]) == 1
 
 
-def test_workers_share_the_cache(tmp_path):
-    evaluate, cache = Counting(), tmp_path / "cache"
-    entry = pc.run(context(tmp_path, evaluate), cache, workers=2)
+def spawned_context(root, profile="P"):
+    """Module-level, so functools.partial(spawned_context, ...) pickles into a spawned worker."""
+    return context(Path(root), Counting(), profile)
+
+
+def test_workers_are_spawned_and_share_the_cache(tmp_path, monkeypatch):
+    import functools
+    import multiprocessing
+    methods = []
+    real = multiprocessing.get_context
+    monkeypatch.setattr(multiprocessing, "get_context", lambda method=None: methods.append(method) or real(method))
+    cache = tmp_path / "cache"
+    factory = functools.partial(spawned_context, str(tmp_path))
+    entry = pc.run(context(tmp_path, Counting()), cache, workers=2, context_factory=factory)
+    assert methods == ["spawn"]
     assert entry["counts"]["evaluated"] == 12 and len(entry["peak_rss_kb_per_worker"]) == 2
+    assert all(kb > 0 for kb in entry["peak_rss_kb_per_worker"])
     assert pc.run(context(tmp_path, Counting()), cache)["counts"]["cached"] == 12
+
+
+def test_workers_need_a_picklable_factory(tmp_path):
+    with pytest.raises(ValueError, match="context_factory"):
+        pc.run(context(tmp_path, Counting()), tmp_path / "cache", workers=2)
+
+
+def test_precompute_has_no_unix_only_code():
+    import ast
+    source = (ROOT / "src" / "citypilot" / "precompute.py").read_text()
+    imported = {a.name.split(".")[0] for n in ast.walk(ast.parse(source)) if isinstance(n, (ast.Import, ast.ImportFrom))
+                for a in (n.names if isinstance(n, ast.Import) else [ast.alias(n.module or "")])}
+    assert "resource" not in imported and "fork" not in source and pc.START_METHOD == "spawn"
 
 
 # --- profile B: strongest package check ---
