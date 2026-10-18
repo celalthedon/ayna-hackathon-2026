@@ -660,7 +660,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
 
     def compare_fingerprint(profile: str) -> tuple:
         """What compare_ayna depends on besides fixed backend fields: the index file on disk."""
-        path = Path(backend.cache_dir) / index_name(profile, model_identity, default_scenario())
+        path = Path(backend.cache_dir) / index_name(profile, model_identity, default_scenario(), backend.catalog_hash)
         try:
             st = path.stat()
             index = (path.name, st.st_size, st.st_mtime_ns)
