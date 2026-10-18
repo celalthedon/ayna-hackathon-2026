@@ -72,6 +72,7 @@ def four_action_backend(tmp_path, counter, reference=("B", "C", "D"), objective=
         cache_dir=tmp_path / "cache",
         N_a_max=4,
         B_h_max=120.0,
+        od_population=len(FIXTURE["ods"]),
         reference_package_ids=reference,
     )
 
