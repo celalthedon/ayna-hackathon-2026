@@ -1,6 +1,24 @@
 # CITYPILOT frontend integration checkpoint
 
-Updated: 2026-10-18, final presentation and publication handoff. The user reports a successful outside-sandbox launch, HTTP 200 for startup/UI assets, readiness, catalog, OD metadata, evaluation and journey, and approves the rendered UI. This is user-reported live evidence; sandbox Python/browser restrictions below remain separate. Decision integration and deployment remain pending.
+Updated: 2026-10-18, resumed validation and publication. The existing implementation and commits `8a5093b` / `781b5f8` are preserved. The user reports successful startup, rendered map, evaluation and journey and approves the UI. Decision integration and deployment remain pending.
+
+## Resumed verification (supersedes historical blockers below)
+
+- Initial working tree was clean on `codex/citypilot-ui-integration`; no new implementation or design change was made. The user's running server was not stopped, restarted or replaced.
+- Host execution approval resolved the sandbox-only authentication restriction: `gh auth status` succeeds as the existing GitHub account. No credentials were extracted, printed or changed.
+- Successfully fetched main using a per-command `safe.directory` exception for this sandbox-created worktree; no global Git configuration change. Fetched/tested main SHA: `14bec5cc61524ea23bbf68f0698eea14cece4d61`.
+- `git merge-base --is-ancestor origin/main HEAD` passes. Main has not advanced beyond this branch's original base. The prospective diff preserves Ali's modules/panels, routing engine/contracts, M assets, gates/configuration, notebooks and dependency pins. No merge, rebase or source changes are needed.
+- Previously blocked focused tests now executed using the existing interpreter with host execution approval:
+
+  ```powershell
+  & 'C:\Users\celal\OneDrive\Desktop\ayna-hackathon-2026\ayna-hackathon-2026\notebooks\citypilot-env\Scripts\python.exe' -I -B -X utf8 -m pytest tests/test_ui_integration.py tests/test_api_routing.py -q
+  ```
+
+  Actual result: **33 passed, 3 skipped, 1 warning in 10.96 s**. The three existing opt-in bundle tests are skipped because `CITYPILOT_TEST_BUNDLE` was not set: real baseline terminal journey, external synthetic supplement load, and repository M config/decision endpoint composition. No full engine parity rerun, optimization or precompute was performed. The warning is the existing Starlette/httpx TestClient deprecation; no dependencies were installed or changed.
+- Existing **20 passing Node checks** remain valid: no application/test code changed in this resumed session, so they were not repeated. User-reported live verification remains separate from automated tests. Browser automation/screenshots have not been newly claimed.
+- Checked GitHub for an existing PR on this branch: none. Prepared description updated with actual Python validation. Publication outcome is appended after the push/PR operation.
+
+The remaining sections retain earlier checkpoint history, including restrictions that were resolved by approved host execution in this resumed session.
 
 ## Final presentation changes and publication status
 
