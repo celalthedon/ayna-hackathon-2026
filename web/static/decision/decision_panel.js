@@ -176,11 +176,15 @@
 
     let limitsLoaded = false;
 
+    function bhMax(s) {  // the slider reaches the AYNA reference budget (compare_ayna) when it exceeds 70
+      return Math.max(70, (s && s.reference_bus_hours) || 0);
+    }
+
     function render() {
       const s = ctx.serverState;
       if (s && !limitsLoaded) {  // start the controls at the configured limits
         limitsLoaded = true;
-        form.B_h = Math.min(70, s.limits.B_h_bus_hours);
+        form.B_h = Math.min(bhMax(s), s.limits.B_h_bus_hours);
         form.K = Math.min(3, s.limits.K_new_infra_km);
         form.N_a = Math.min(s.N_a_max, Math.max(1, s.limits.N_a_actions));
       }
@@ -192,7 +196,7 @@
       const finding = s && s.findings && s.findings[form.profile];
       if (finding) root.appendChild(el("div", { class: "finding" }, `Finding (profile ${form.profile}): ${finding}`));
       root.appendChild(el("div", { class: "row" },
-        number("B_h", 0, 70, 0.5, "bus-hours"), number("K", 0, 3, 0.05, "km"),
+        number("B_h", 0, bhMax(s), 0.5, "bus-hours"), number("K", 0, 3, 0.05, "km"),
         el("label", {}, "N_a", el("select", { onchange: (e) => { form.N_a = Number(e.target.value); } },
           Array.from({ length: s ? s.N_a_max : form.N_a }, (_, i) => i + 1)
             .map((n) => el("option", { value: n, selected: n === form.N_a }, String(n))))),

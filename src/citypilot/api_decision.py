@@ -124,7 +124,7 @@ class DecisionBackend:
 # --- request bodies (out of range -> 422) ---
 
 class OptimizeBody(BaseModel):
-    B_h: float = Field(ge=0, le=70, description="bus-hour budget")
+    B_h: float = Field(ge=0, allow_inf_nan=False, description="bus-hour budget; any finite value (limits only filter)")
     K: float = Field(ge=0, le=3, description="new infrastructure km budget")
     N_a: int = Field(ge=1, description="maximum number of actions; at most the backend's N_a_max")
     profile: Literal["P", "B"]
@@ -560,11 +560,12 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
         primed.add(_canonical({"profile": profile, "scenario": _evaluator_scenario_key(scenario)}))
 
     def evaluator(profile: str, scenario: Scenario):
-        """Cached evaluator; on first use it evaluates every valid package with <= N_a_max actions once
-        (index summaries when present), so later limit changes only re-filter and re-rank."""
+        """Cached evaluator. At the default scenario, on first use it evaluates every valid package with
+        <= N_a_max actions once (index summaries when present), so later limit changes only re-filter and
+        re-rank; stress scenarios evaluate only the packages they need."""
         cache = cache_for(profile, scenario)
         name = _canonical({"profile": profile, "scenario": _evaluator_scenario_key(scenario)})
-        if name not in primed:
+        if name not in primed and scenario == default_scenario():
             widest = widest_problem(profile, scenario)
             packages = list(enumerate_packages(widest))
             if len(packages) <= backend.limits.max_exact_packages:
@@ -600,6 +601,13 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
     def run_optimize(limits: Limits, profile: str) -> OptimizationResult:
         scenario = default_scenario()
         return optimize(problem(scenario, limits, profile), evaluator(profile, scenario))
+
+    def reference_bus_hours() -> float | None:
+        """Added bus-hours of the AYNA reference package (the compare_ayna budget), for the B_h slider range."""
+        if not backend.reference_package_ids:
+            return None
+        resources = backend.resources_for(default_scenario())(tuple(sorted(backend.reference_package_ids)))
+        return resources.added_bus_hours
 
     def finding(profile: str) -> str | None:
         """The profile's finding if it was computed for this model and catalog; any other finding is ignored."""
@@ -644,6 +652,7 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
             "primary_t_min": backend.primary_t_min,
             "H_hours": backend.H_hours,
             "reference_package_ids": list(backend.reference_package_ids) if backend.reference_package_ids else None,
+            "reference_bus_hours": reference_bus_hours(),
             "stress_available": backend.stress_grid is not None,
             "co2_available": co2 is not None,
             "co2_defaults": None if co2 is None else {
