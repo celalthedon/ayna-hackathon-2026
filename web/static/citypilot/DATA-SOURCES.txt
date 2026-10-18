@@ -1,0 +1,9 @@
+CITYPILOT pilot display data
+Bundle hash: 9457bfe95125b1d8bddb1be662ad6f0bbd1a00c0ac8f8abcc2fbecf872d53066
+M supplement: 42a560089d459f61667e6624425e04e03429d03f139605ef02124874d801835a
+OpenStreetMap contributors / Geofabrik snapshot 2026-10-16, ODbL 1.0. https://www.openstreetmap.org/copyright
+Full pilot geometry derived read-only from verified model bundle, M supplement and local Geofabrik ZIP.
+No source files, bundle payloads, routing distances or OD selection modified.
+All building heights (12m) and layer depths illustrative. Model source assumptions and geometry review statuses retained.
+Three.js 0.180.0 copied from the approved HTML; see THREE-LICENSE.txt.
+Physical journey time and geometry from same-origin routing API. Playback is simulation, not live tracking.

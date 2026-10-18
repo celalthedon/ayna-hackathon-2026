@@ -188,6 +188,17 @@ def build_routing_router(runtime: RoutingRuntime) -> APIRouter:
             LOG.exception("Routing catalog failed")
             return _error(RoutingAPIError(500, "internal_error", "Routing request failed"))
 
+    @router.get("/od_metadata")
+    async def display_od():
+        from citypilot.ui_metadata import od_metadata
+        try:
+            return await runtime.run(lambda: od_metadata(runtime.model, runtime.identity))
+        except RoutingAPIError as exc:
+            return _error(exc)
+        except Exception:
+            LOG.exception("Routing display metadata failed")
+            return _error(RoutingAPIError(500, "internal_error", "Routing request failed"))
+
     async def calculate(request, origin_id=None, destination_id=None):
         try:
             payload = await _body(request)
