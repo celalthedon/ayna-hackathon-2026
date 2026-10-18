@@ -316,7 +316,7 @@ def precompute_stress(bundle: Path, config: Path, profile: str, cache_dir: Path)
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from citypilot.api_decision import build_decision_router
+    from citypilot.api_decision import build_decision_router, stress_name
     from citypilot.decision_real import real_backend, real_limits
     from citypilot.routing_engine import load_model
 
@@ -332,9 +332,10 @@ def precompute_stress(bundle: Path, config: Path, profile: str, cache_dir: Path)
     started = time.perf_counter()
     r = client.post("/decision/stress", json={"package_ids": package, "profile": profile})
     r.raise_for_status()
-    files = sorted(Path(cache_dir).glob(f"stress_{profile}_*.json"))
+    path = Path(cache_dir) / stress_name(profile, cache_identity(backend.config_hash, backend.input_hashes),
+                                         Scenario(1.0, 1.0, backend.H_hours), backend.catalog_hash)
     return {"profile": profile, "package": package, "status": r.json()["status"], "stress_s": time.perf_counter() - started,
-            "file": files[-1].name if files else None}
+            "file": path.name if path.exists() else None}
 
 
 def findings_from_manifest(path: Path, model_identity: Mapping, catalog_hash: str | None) -> dict:
