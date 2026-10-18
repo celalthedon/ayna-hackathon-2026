@@ -20,6 +20,15 @@ from citypilot.contracts import RoutingRequest
 
 
 class BenchmarkTests(unittest.TestCase):
+    def test_required_memory_monitor_dependency_is_pinned(self):
+        from importlib.metadata import version
+        import psutil
+        # The CLI/monitor require this import without an optional fallback.
+        # An already populated notebook environment must not hide an omitted pin.
+        self.assertEqual(psutil.__version__,version('psutil'))
+        self.assertIn('psutil=='+version('psutil'),
+                      (ROOT/'requirements.txt').read_text(encoding='utf-8').splitlines())
+
     def test_timing_probe_anchors_and_functions_restore_without_source_edits(self):
         path=ROOT/'src/citypilot/routing_engine.py';before=hashlib.sha256(path.read_bytes()).hexdigest()
         originals={name:getattr(engine,name) for name in ('_scenario','_solve','_raw_arcs','_service_stress_arcs','_activate_services')}
