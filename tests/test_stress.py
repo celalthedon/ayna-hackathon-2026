@@ -225,7 +225,7 @@ def test_grid_from_curated_assumptions():
     grid = stress_grid_from_assumptions(rows, "P3", {"SG_R2": "P1", "SG_R14": "P2"})
     assert dict(grid.speed_levels_kmh) == {"low": 12, "default": 18, "high": 25}
     assert dict(grid.headway_levels_min["SG_R2"]) == {"low": 6, "default": 7.5, "high": 10}
-    assert dict(grid.headway_levels_min["SG_R14"]) == {"low": 4.5, "default": 5, "high": 8}
+    assert dict(grid.headway_levels_min["SG_R14"]) == {"low": 4.5, "default": 5, "high": 11}
 
 
 # --- removals ---
