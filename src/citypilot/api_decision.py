@@ -6,6 +6,7 @@ All decision maths lives in citypilot.decision_engine; this module validates, ca
 import hashlib
 import json
 import math
+import uuid
 from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Callable, Literal, Mapping
@@ -172,11 +173,17 @@ def optimization_json(r: OptimizationResult) -> dict:
     }
 
 
-# --- evaluation cache: one file per (config hash, profile, scenario) ---
+# --- evaluation cache: one file per canonical request, data/cache/evaluations/<sha256>.json ---
 
-def _scenario_key(scenario: Scenario) -> dict:
+def _canonical(value) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+
+
+def _evaluator_scenario_key(scenario: Scenario) -> dict:
+    """Scenario values the evaluator is built from. H_hours only changes resources, so it is left out;
+    the scalar headway_factor is kept because a scenario without per-group factors falls back to it."""
     return {"speed_factor": scenario.speed_factor, "headway_factor": scenario.headway_factor,
-            "H_hours": scenario.H_hours, "headway_factor_by_group": dict(sorted((scenario.headway_factor_by_group or {}).items()))}
+            "headway_factor_by_group": dict(sorted((scenario.headway_factor_by_group or {}).items()))}
 
 
 def _evaluation_to_dict(e: EvaluationResult) -> dict:
@@ -196,36 +203,86 @@ def _evaluation_from_dict(d: dict) -> EvaluationResult:
     }))
 
 
-class EvaluationCache:
-    """Evaluates each package once per key and keeps the results on disk."""
+def _answers(result: EvaluationResult, request: RoutingRequest) -> bool:
+    """result.validate_request(request) as a yes/no: contract, model_version, od_set_id, state, profile,
+    config_hash, primary_t, cap and thresholds must all match the request."""
+    try:
+        result.validate_request(request)
+    except ValueError:  # ContractError
+        return False
+    return True
 
-    def __init__(self, cache_dir: Path, key_parts: dict, make_evaluator: Callable[[], Callable]):
-        digest = hashlib.sha256(json.dumps(key_parts, sort_keys=True).encode()).hexdigest()[:16]
-        self.path = Path(cache_dir) / f"evaluations_{digest}.json"
-        self.key_parts = key_parts
+
+class EvaluationCache:
+    """Evaluates each canonical request once and keeps the result on disk.
+
+    Key = the full routing request (contract_version, model_version, od_set_id, state, profile, closure,
+    sorted patches, speed_factor, headway_factor_by_group, thresholds, primary_t, cap, candidate_ids)
+    plus the model identity (config_hash, input_hashes) and the evaluator scenario. Limits (B_h, K, N_a)
+    are not part of it. Each file stores its key; a stored key that differs from the recomputed one,
+    an unreadable file or a result that does not match the request is a miss: re-evaluate and overwrite.
+    Every returned result passes result.validate_request(request): a cached one that fails (disk or RAM)
+    is discarded and recomputed; a fresh one that fails raises and is never cached.
+    """
+
+    def __init__(self, cache_dir: Path, model_identity: dict, scenario: Scenario, make_evaluator: Callable[[], Callable]):
+        self.directory = Path(cache_dir) / "evaluations"
+        self.model_identity = model_identity
+        self.scenario_key = _evaluator_scenario_key(scenario)
         self._make_evaluator = make_evaluator
         self._evaluator = None
-        self.results: dict[str, dict] = {}
-        if self.path.exists():
-            stored = json.loads(self.path.read_text())
-            if stored.get("key") != key_parts:
-                raise ValueError(f"{self.path}: cache key mismatch")
-            self.results = stored["results"]
+        self.results: dict[str, tuple[str, EvaluationResult]] = {}  # digest -> (canonical key, result)
+
+    def key_for(self, request: RoutingRequest) -> str:
+        return _canonical({"request": request.to_dict(), "model": self.model_identity, "scenario": self.scenario_key})
+
+    def path_for(self, key: str) -> Path:
+        return self.directory / f"{hashlib.sha256(key.encode()).hexdigest()}.json"
+
+    def lookup(self, request: RoutingRequest) -> EvaluationResult | None:
+        """The valid stored result for this exact request (RAM, then disk), or None; never evaluates."""
+        key = self.key_for(request)
+        path = self.path_for(key)
+        held = self.results.get(path.stem)
+        if held is not None:
+            if held[0] == key and _answers(held[1], request):
+                return held[1]
+            del self.results[path.stem]  # invalid RAM entry: discard
+        result = self._read(path, key, request)
+        if result is not None:
+            self.results[path.stem] = (key, result)
+        return result
 
     def evaluate(self, request: RoutingRequest) -> EvaluationResult:
-        key = ",".join(request.candidate_ids)
-        if key not in self.results:
-            if self._evaluator is None:
-                self._evaluator = self._make_evaluator()
-            self.results[key] = _evaluation_to_dict(self._evaluator(request))
-            self._save()
-        return _evaluation_from_dict(self.results[key])
+        result = self.lookup(request)
+        if result is not None:
+            return result
+        if self._evaluator is None:
+            self._evaluator = self._make_evaluator()
+        result = self._evaluator(request)
+        result.validate_request(request)  # raises ContractError; nothing is cached
+        key = self.key_for(request)
+        path = self.path_for(key)
+        self._write(path, key, result)
+        self.results[path.stem] = (key, result)
+        return result
 
-    def _save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"key": self.key_parts, "results": self.results}))
-        tmp.replace(self.path)
+    @staticmethod
+    def _read(path: Path, key: str, request: RoutingRequest) -> EvaluationResult | None:
+        try:
+            stored = json.loads(path.read_text())
+            if _canonical(stored["key"]) != key:
+                return None
+            result = _evaluation_from_dict(stored["result"])
+            return result if _answers(result, request) else None
+        except (OSError, ValueError, KeyError, TypeError):  # missing, corrupt or mismatched -> re-evaluate
+            return None
+
+    def _write(self, path: Path, key: str, result: EvaluationResult) -> None:
+        self.directory.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.stem}.{uuid.uuid4().hex}.tmp")
+        tmp.write_text(_canonical({"key": json.loads(key), "result": _evaluation_to_dict(result)}))
+        tmp.replace(path)
 
 
 # --- router ---
@@ -234,11 +291,13 @@ def build_decision_router(backend: DecisionBackend) -> APIRouter:
     router = APIRouter(prefix="/decision", tags=["decision"])
     caches: dict[str, EvaluationCache] = {}
 
+    model_identity = {"config_hash": backend.config_hash, "input_hashes": dict(sorted(backend.input_hashes.items()))}
+
     def cache_for(profile: str, scenario: Scenario) -> EvaluationCache:
-        parts = {"config_hash": backend.config_hash, "profile": profile, "scenario": _scenario_key(scenario)}
-        name = json.dumps(parts, sort_keys=True)
+        name = _canonical({"profile": profile, "scenario": _evaluator_scenario_key(scenario)})
         if name not in caches:
-            caches[name] = EvaluationCache(backend.cache_dir, parts, lambda: backend.evaluator_for(profile, scenario))
+            caches[name] = EvaluationCache(backend.cache_dir, model_identity, scenario,
+                                           lambda: backend.evaluator_for(profile, scenario))
         return caches[name]
 
     def default_scenario() -> Scenario:

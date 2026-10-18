@@ -134,7 +134,7 @@ def test_optimize_then_rerank_without_evaluator_calls(client, counter):
 def test_disk_cache_survives_a_new_router(tmp_path, counter):
     optimize(client_for(four_action_backend(tmp_path, counter)), 24)
     calls = counter.calls
-    assert list((tmp_path / "cache").glob("*.json"))
+    assert list((tmp_path / "cache" / "evaluations").glob("*.json"))
     r = strict_json(optimize(client_for(four_action_backend(tmp_path, counter)), 15))
     assert r["recommendation"]["candidate_ids"] == ["C", "D"]
     assert counter.calls == calls
